@@ -39,7 +39,7 @@ Time to parse the kraken output, extract all matching reads, and write to new fa
 
 Clone the repository:
 ```
-git clone:
+git clone https://github.com/Sam-Sims/kraken-extract
 ```
 
 Build from source:
