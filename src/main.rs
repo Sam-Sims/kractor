@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::io::prelude::*;
+use std::sync::mpsc::{channel, Sender};
+use std::thread;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -81,9 +83,19 @@ fn main() {
     let in_gzip = GzDecoder::new(in_file);
     let in_buf = io::BufReader::new(in_gzip);
 
-    let out_file = std::fs::File::create(args.output).unwrap();
-    let out_gzip = GzEncoder::new(out_file, Compression::fast());
-    let mut out_buf = io::BufWriter::new(out_gzip);
+    let (tx, rx) = channel::<Vec<u8>>();
+
+    let writer_thread = thread::spawn(move || {
+        let out_file = std::fs::File::create(args.output).unwrap();
+        let out_gzip = GzEncoder::new(out_file, Compression::fast());
+        let mut out_buf = io::BufWriter::new(out_gzip);
+
+        for data in rx {
+            out_buf.write_all(&data);
+            out_buf.write_all(b"\n");
+            out_buf.flush();
+        }
+    });
 
     for line in in_buf.lines() {
         let line = line.unwrap();
@@ -99,12 +111,16 @@ fn main() {
             }
             _ => {}
         };
+
         if reads_to_save.contains_key(&current_id) {
-            print!("Processed {} reads\r", num_reads);
-            io::stdout().flush().unwrap();
-            out_buf.write_all(&line_bytes);
-            out_buf.write_all(b"\n");
+            let data_to_write = line_bytes.to_vec();
+            tx.send(data_to_write).unwrap();
         }
-        out_buf.flush();
     }
+
+    drop(tx);
+
+    writer_thread.join().unwrap();
+
+    println!("Writing complete.");
 }
