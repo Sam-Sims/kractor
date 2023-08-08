@@ -45,28 +45,33 @@ struct Args {
 
 fn process_kraken_output(kraken_output: &str) -> (i32, String) {
     let fields: Vec<&str> = kraken_output.split('\t').collect();
-    let taxon_id = fields[2].parse::<i32>().unwrap();
+    let taxon_id = fields[2].parse::<i32>().expect("Error parsing taxon ID");
     let read_id = fields[1].to_string();
     return (taxon_id, read_id);
 }
 
 fn read_fastq(path: &str) -> io::BufReader<Box<dyn io::Read>> {
+    // The gzip magic number is 0x1f8b
     const GZIP_MAGIC_NUMBER: [u8; 2] = [0x1f, 0x8b];
 
-    let mut file = match fs::File::open(path) {
-        Ok(file) => file,
-        Err(_) => panic!("Error opening or reading the file"),
+    let mut file = if let Ok(file) = fs::File::open(path) {
+        file
+    } else {
+        panic!("Error opening or reading the file");
     };
 
+    // Buffer to store the first two bytes of the file
     let mut buffer = [0u8; 2];
+
     if let Ok(size) = file.read(&mut buffer) {
+        // reset the pointer back to the start
         file.seek(io::SeekFrom::Start(0)).ok();
+        // check if the first two bytes match the gzip magic number => file is gzipped
+        // otherwise, it's a plain text file
         if size == 2 && buffer == GZIP_MAGIC_NUMBER {
-            println!("File is gzipped");
             let gzip_reader: Box<dyn io::Read> = Box::new(GzDecoder::new(file));
             io::BufReader::new(gzip_reader)
         } else {
-            println!("File is not gzipped");
             let plain_reader: Box<dyn io::Read> = Box::new(file);
             io::BufReader::new(plain_reader)
         }
@@ -87,13 +92,11 @@ fn main() {
     // }
     let mut reads_to_save = HashMap::new();
     println!("Reading kraken output...");
-    let kraken_output =
-        fs::read_to_string(args.kraken).expect("Something went wrong reading the file");
+    let kraken_output = fs::read_to_string(args.kraken).expect("Error reading kraken output file");
 
     let total_reads = kraken_output.lines().count();
     for line in kraken_output.lines() {
-        let line_values = process_kraken_output(line);
-        let (taxon_id, read_id) = line_values;
+        let (taxon_id, read_id) = process_kraken_output(line);
         if taxon_id == args.taxid {
             reads_to_save.insert(read_id, taxon_id);
         }
@@ -112,14 +115,16 @@ fn main() {
 
     let (tx, rx) = channel::<Vec<u8>>();
     let writer_thread = thread::spawn(move || {
-        let out_file = fs::File::create(args.output).unwrap();
+        let out_file = fs::File::create(args.output).expect("Error creating output file");
         let out_gzip = GzEncoder::new(out_file, Compression::fast());
         let mut out_buf = io::BufWriter::new(out_gzip);
 
         for data in rx {
-            out_buf.write_all(&data);
-            out_buf.write_all(b"\n");
-            out_buf.flush();
+            out_buf
+                .write_all(&data)
+                .and_then(|_| out_buf.write_all(b"\n"))
+                .and_then(|_| out_buf.flush())
+                .expect("Error writing to output file");
         }
     });
     println!("Reading fastq:");
