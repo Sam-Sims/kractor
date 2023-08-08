@@ -1,12 +1,11 @@
 use clap::Parser;
-use std::fs;
-use std::fs::File;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
+use std::collections::HashMap;
+use std::fs;
 use std::io;
 use std::io::prelude::*;
-use std::collections::HashMap;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -43,7 +42,7 @@ struct Args {
 
 // }
 
-fn process_kraken_output(kraken_output: &str) -> (i32, String){
+fn process_kraken_output(kraken_output: &str) -> (i32, String) {
     let fields: Vec<&str> = kraken_output.split('\t').collect();
     let taxon_id = fields[2].parse::<i32>().unwrap();
     let read_id = fields[1].to_string();
@@ -63,9 +62,9 @@ fn main() {
 
     let mut reads_to_save = HashMap::new();
 
-    let kraken_output = fs::read_to_string(args.kraken)
-        .expect("Something went wrong reading the file");
-    
+    let kraken_output =
+        fs::read_to_string(args.kraken).expect("Something went wrong reading the file");
+
     for line in kraken_output.lines() {
         let line_values = process_kraken_output(line);
         let (taxon_id, read_id) = line_values;
@@ -74,10 +73,9 @@ fn main() {
         }
     }
 
-    let mut num_lines=0;
-    let mut num_reads=0;
-    let mut current_id :String = String::new();
-
+    let mut num_lines = 0;
+    let mut num_reads = 0;
+    let mut current_id: String = String::new();
 
     let in_file = std::fs::File::open(args.fastq).unwrap();
     let in_gzip = GzDecoder::new(in_file);
@@ -90,23 +88,23 @@ fn main() {
     for line in in_buf.lines() {
         let line = line.unwrap();
         let line_bytes = line.as_bytes();
-        num_lines+=1;
+        num_lines += 1;
 
         match num_lines % 4 {
             1 => {
                 let fields: Vec<&str> = line.split_whitespace().collect();
                 let read_id = fields[0].to_string();
                 current_id = read_id[1..].to_string();
-                num_reads+=1;
+                num_reads += 1;
             }
             _ => {}
         };
         if reads_to_save.contains_key(&current_id) {
             print!("Processed {} reads\r", num_reads);
             io::stdout().flush().unwrap();
-                out_buf.write_all(&line_bytes);
-                out_buf.write_all(b"\n");
-            }
+            out_buf.write_all(&line_bytes);
+            out_buf.write_all(b"\n");
+        }
         out_buf.flush();
     }
 }
