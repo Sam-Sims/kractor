@@ -50,6 +50,30 @@ fn process_kraken_output(kraken_output: &str) -> (i32, String) {
     return (taxon_id, read_id);
 }
 
+fn read_fastq(path: &str) -> io::BufReader<Box<dyn io::Read>> {
+    const GZIP_MAGIC_NUMBER: [u8; 2] = [0x1f, 0x8b];
+
+    if let Ok(mut file) = fs::File::open(path) {
+        let mut buffer = [0u8; 2];
+        if let Ok(size) = file.read(&mut buffer) {
+            if let Err(_) = file.seek(io::SeekFrom::Start(0)) {
+                panic!("Error resetting file pointer");
+            }
+            if size == 2 && buffer == GZIP_MAGIC_NUMBER {
+                println!("File is gzipped");
+                let in_gzip = Box::new(GzDecoder::new(file)) as Box<dyn io::Read>;
+                let in_buf = io::BufReader::new(in_gzip);
+                return in_buf;
+            } else {
+                println!("File is not gzipped");
+                let in_buf = io::BufReader::new(Box::new(file) as Box<dyn io::Read>);
+                return in_buf;
+            }
+        }
+    }
+    panic!("Error opening or reading the file");
+}
+
 fn main() {
     let args = Args::parse();
 
@@ -60,7 +84,6 @@ fn main() {
     //     let line_values = process_kraken_report(line);
     //     let (taxon_id, rank_code,mut level) = line_values;
     // }
-
     let mut reads_to_save = HashMap::new();
     println!("Reading kraken output...");
     let kraken_output =
@@ -84,13 +107,11 @@ fn main() {
     let mut num_reads = 0;
     let mut current_id: String = String::new();
 
-    let in_file = std::fs::File::open(args.fastq).unwrap();
-    let in_gzip = GzDecoder::new(in_file);
-    let in_buf = io::BufReader::new(in_gzip);
+    let in_buf = read_fastq(&args.fastq);
 
     let (tx, rx) = channel::<Vec<u8>>();
     let writer_thread = thread::spawn(move || {
-        let out_file = std::fs::File::create(args.output).unwrap();
+        let out_file = fs::File::create(args.output).unwrap();
         let out_gzip = GzEncoder::new(out_file, Compression::fast());
         let mut out_buf = io::BufWriter::new(out_gzip);
 
