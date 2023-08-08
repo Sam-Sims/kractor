@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::io::prelude::*;
-use std::sync::mpsc::{channel, Sender};
+use std::sync::mpsc::channel;
 use std::thread;
 
 #[derive(Parser, Debug)]
@@ -63,10 +63,11 @@ fn main() {
     // }
 
     let mut reads_to_save = HashMap::new();
-
+    println!("Reading kraken output...");
     let kraken_output =
         fs::read_to_string(args.kraken).expect("Something went wrong reading the file");
 
+    let total_reads = kraken_output.lines().count();
     for line in kraken_output.lines() {
         let line_values = process_kraken_output(line);
         let (taxon_id, read_id) = line_values;
@@ -74,6 +75,11 @@ fn main() {
             reads_to_save.insert(read_id, taxon_id);
         }
     }
+    println!(
+        "Done! {} total reads | {} reads to save.",
+        reads_to_save.len(),
+        total_reads
+    );
 
     let mut num_lines = 0;
     let mut num_reads = 0;
@@ -115,9 +121,11 @@ fn main() {
         if reads_to_save.contains_key(&current_id) {
             let data_to_write = line_bytes.to_vec();
             tx.send(data_to_write).unwrap();
+            print!("Processed {} reads\r", num_reads);
+            io::stdout().flush().unwrap();
         }
     }
-
+    println!("Processing is done. Writing is in progress...");
     drop(tx);
 
     writer_thread.join().unwrap();

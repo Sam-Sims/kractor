@@ -13,7 +13,7 @@ This is currently an early implementation (and my first Rust programme!), with p
 ## Current features:
 
 - Extract all reads from a `fastq.gz` file based on a taxonomic id
-- ~ 300% speed up over KrakenTools
+- ~ 720% speed up over KrakenTools 
 
 ### Benchmarks (rough):
 
@@ -25,15 +25,11 @@ Time to parse the kraken output, extract all matching reads, and write to new fa
 | Type | Time       |
 |------|------------|
 | real | 14m 53s |
-| user | 13m 31s |
-| sys  | 1m 24s  |
 
 **kraken-extract:**
 | Type | Time    |
 |------|---------|
-| real | 5m 03s |
-| user | 2m 09s |
-| sys  | 2m 03s |
+| real | 2m 04s |
 
 ## Installation
 
@@ -66,6 +62,7 @@ All executables will be in the directory kraken-extract/target/release.
 - `--append`
 - `--compression-mode <fast/default/slow>`
 - More verbose output
+- Proper benchmarks
 
 ## Version
 - 0.1.0
