@@ -1,13 +1,12 @@
 use clap::Parser;
-use flate2::read::GzDecoder;
-use flate2::write::GzEncoder;
-use flate2::Compression;
-use std::collections::HashMap;
-use std::fs;
-use std::io;
-use std::io::prelude::*;
-use std::sync::mpsc::channel;
-use std::thread;
+use flate2::{read::GzDecoder, write::GzEncoder, Compression};
+use std::{
+    collections::HashMap,
+    fs,
+    io::{self, prelude::*},
+    sync::mpsc::channel,
+    thread,
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -90,7 +89,6 @@ fn main() {
     let in_buf = io::BufReader::new(in_gzip);
 
     let (tx, rx) = channel::<Vec<u8>>();
-
     let writer_thread = thread::spawn(move || {
         let out_file = std::fs::File::create(args.output).unwrap();
         let out_gzip = GzEncoder::new(out_file, Compression::fast());
@@ -102,6 +100,7 @@ fn main() {
             out_buf.flush();
         }
     });
+    println!("Reading fastq:");
 
     for line in in_buf.lines() {
         let line = line.unwrap();

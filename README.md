@@ -13,6 +13,7 @@ This is currently an early implementation (and my first Rust programme!), with p
 ## Current features:
 
 - Extract all reads from a `fastq.gz` file based on a taxonomic id
+- Multithreaded
 - ~ 720% speed up over KrakenTools 
 
 ### Benchmarks (rough):
@@ -50,7 +51,7 @@ All executables will be in the directory kraken-extract/target/release.
 ## Usage
 
 ```
-./kraken-extract --kraken <kraken_output> --fastq <fastq_file> --taxid <taxonomic_id> --output <output_file>
+kraken-extract --kraken <kraken_output> --fastq <fastq_file> --taxid <taxonomic_id> --output <output_file>
 ```
 
 ## Future plans
