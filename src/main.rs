@@ -9,7 +9,10 @@ use std::{
 };
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(
+    version,
+    about = "Extract reads from a FASTQ file based on taxonomic classification via Kraken2."
+)]
 struct Args {
     #[arg(short, long)]
     kraken: String,
@@ -21,6 +24,8 @@ struct Args {
     fastq: String,
     #[arg(short, long)]
     output: String,
+    #[arg(long, default_value = "default")]
+    compression: Option<String>,
 }
 
 // fn process_kraken_report(kraken_report: &str) -> (i32, &str, i32) {
@@ -83,6 +88,16 @@ fn read_fastq(path: &str) -> io::BufReader<Box<dyn io::Read>> {
 fn main() {
     let args = Args::parse();
 
+    let compression_mode = match args.compression.as_deref() {
+        Some("fast") => Compression::fast(),
+        Some("default") => Compression::default(),
+        Some("best") => Compression::best(),
+        _ => {
+            eprintln!("Invalid compression mode. Using default compression.");
+            Compression::default()
+        }
+    };
+
     // let kraken_report = fs::read_to_string(args.report)
     //     .expect("Something went wrong reading the file");
 
@@ -116,7 +131,7 @@ fn main() {
     let (tx, rx) = channel::<Vec<u8>>();
     let writer_thread = thread::spawn(move || {
         let out_file = fs::File::create(args.output).expect("Error creating output file");
-        let out_gzip = GzEncoder::new(out_file, Compression::fast());
+        let out_gzip = GzEncoder::new(out_file, compression_mode);
         let mut out_buf = io::BufWriter::new(out_gzip);
 
         for data in rx {

@@ -55,15 +55,16 @@ kraken-extract --kraken <kraken_output> --fastq <fastq_file> --taxid <taxonomic_
 ```
 
 ## Future plans
-- Support unzipped fastq files
-- Support paired end FASTQ files
-- `--include-parents` and `--include-children` arguments
-- Supply multiple taxonomic IDs to extract
-- Exclude taxonomic IDs
-- `--append`
-- `--compression-mode <fast/default/slow>`
-- More verbose output
-- Proper benchmarks
+- [x] Support unzipped fastq files
+- [ ] Support paired end FASTQ files
+- [ ] `--include-parents` and `--include-children` arguments
+- [ ] Supply multiple taxonomic IDs to extract
+- [ ] Exclude taxonomic IDs
+- [ ] `--append`
+- [x] `--compression-mode <fast/default/best>`
+- [ ] More verbose output
+- [ ] Proper benchmarks
+
 
 ## Version
 - 0.1.0
