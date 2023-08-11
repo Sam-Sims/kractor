@@ -89,6 +89,31 @@ fn read_fastq(path: &str) -> io::BufReader<Box<dyn io::Read>> {
     }
 }
 
+fn extract_parents(
+    taxon_to_index: &HashMap<i32, usize>,
+    nodes: &Vec<Tree>,
+    taxon_id: i32,
+) -> Vec<i32> {
+    // Backtracking traversal from the given taxon_id to the root
+    let mut parents = Vec::new();
+    let mut curr_index = taxon_to_index[&taxon_id];
+
+    while let Some(parent_index) = nodes[curr_index].parent {
+        parents.push(nodes[parent_index].taxon_id);
+        curr_index = parent_index;
+    }
+
+    parents
+}
+
+fn extract_children(nodes: &Vec<Tree>, start_index: usize, result: &mut Vec<i32>) {
+    // recursive post-order traversal of the tree
+    for &child_index in &nodes[start_index].children {
+        extract_children(nodes, child_index, result);
+    }
+    result.push(nodes[start_index].taxon_id);
+}
+
 fn process_kraken_report_line(kraken_report: &str) -> (i32, i32) {
     let fields: Vec<&str> = kraken_report.split('\t').collect();
     let taxon_id = fields[4].parse::<i32>().unwrap();
@@ -182,12 +207,18 @@ fn main() {
     // if --report is provided, read the report and build the tree
     if args.report.is_some() {
         println!("Reading kraken report");
-        let tree = process_kraken_report(args.taxid, args.report.unwrap());
+        let (nodes, taxon_to_index) =
+            process_kraken_report(args.taxid, args.report.unwrap().to_string());
         if args.children {
             println!("Saving children of taxon {}", args.taxid);
+            // declearing children here so that it's not reallocated every time the function is called
+            let mut children = Vec::new();
+            extract_children(&nodes, taxon_to_index[&args.taxid], &mut children);
+            println!("{:?}", children);
         }
         if args.parents {
             println!("Saving parents of taxon {}", args.taxid);
+            println!("{:?}", extract_parents(&taxon_to_index, &nodes, args.taxid));
         }
     }
 
