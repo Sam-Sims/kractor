@@ -66,4 +66,4 @@ kraken-extract --kraken <kraken_output> --fastq <fastq_file> --taxid <taxonomic_
 - Proper benchmarks
 
 ## Version
-- 0.1.0
+- 0.2.0
