@@ -74,7 +74,7 @@ kraken-extract --kraken <kraken_output> --fastq <fastq_file> --taxid <taxonomic_
 
 `--children`: This will extract all the reads classified as decendents or subtaxa of `--taxid` (Including the taxid)
 
-`--compression`: This defines the compression mode of the output `fastq.gz` file. fast/default/best
+`--compression`: This defines the compression mode of the output `fastq.gz` file - fast / default / best
 
 ## Future plans
 - [x] Support unzipped fastq files
