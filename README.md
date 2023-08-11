@@ -12,7 +12,9 @@ This is currently an early implementation (and my first Rust programme!), with p
 
 ## Current features:
 
-- Extract all reads from a `fastq.gz` file based on a taxonomic id
+- Extract all reads from a `fastq` file based on a taxonomic id
+- Extract parents or the children of the specified taxon id
+- Supports both uncompressed or `gzip` inputs.
 - Multithreaded
 - ~ 720% speed up over KrakenTools 
 
@@ -54,16 +56,35 @@ All executables will be in the directory kraken-extract/target/release.
 kraken-extract --kraken <kraken_output> --fastq <fastq_file> --taxid <taxonomic_id> --output <output_file>
 ```
 
+## Arguments
+```
+-k, --kraken <KRAKEN_OUTPUT>            
+-t, --taxid <TAXID>              
+-r, --report <REPORT_OUTPUT>            
+-f, --fastq <FASTQ_FILE>              
+-o, --output <OUTPUT_LOCATION>            
+--compression <COMPRESSION>      [default: default]
+--parents                    
+--children                   
+-h, --help                       Print help
+-V, --version                    Print version
+```
+
+`--parents`: This will extract all the reads classified at all taxons between the root and the specified `--taxid`
+
+`--children`: This will extract all the reads classified as decendents or subtaxa of `--taxid` (Including the taxid)
+
 ## Future plans
 - [x] Support unzipped fastq files
 - [ ] Support paired end FASTQ files
-- [ ] `--include-parents` and `--include-children` arguments
+- [x] `--include-parents` and `--include-children` arguments
 - [ ] Supply multiple taxonomic IDs to extract
 - [ ] Exclude taxonomic IDs
 - [ ] `--append`
 - [x] `--compression-mode <fast/default/best>`
 - [ ] More verbose output
 - [ ] Proper benchmarks
+- [ ] Output fasta format (for blast??)
 
 
 ## Version
