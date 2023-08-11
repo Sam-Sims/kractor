@@ -2,9 +2,8 @@ use clap::Parser;
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use std::{
     collections::HashMap,
-    fs::{self, File},
+    fs::{self},
     io::{self, prelude::*},
-    os::unix::process,
     sync::mpsc::channel,
     thread,
 };
@@ -96,6 +95,7 @@ fn extract_parents(
 ) -> Vec<i32> {
     // Backtracking traversal from the given taxon_id to the root
     let mut parents = Vec::new();
+    parents.push(taxon_id);
     let mut curr_index = taxon_to_index[&taxon_id];
 
     while let Some(parent_index) = nodes[curr_index].parent {
@@ -205,22 +205,28 @@ fn main() {
         }
     };
     // if --report is provided, read the report and build the tree
+    let mut taxon_ids_to_save = Vec::new();
+
     if args.report.is_some() {
         println!("Reading kraken report");
         let (nodes, taxon_to_index) =
             process_kraken_report(args.taxid, args.report.unwrap().to_string());
         if args.children {
-            println!("Saving children of taxon {}", args.taxid);
             // declearing children here so that it's not reallocated every time the function is called
             let mut children = Vec::new();
             extract_children(&nodes, taxon_to_index[&args.taxid], &mut children);
-            println!("{:?}", children);
+            //println!("{:?}", children);
+            taxon_ids_to_save.extend(children);
         }
         if args.parents {
-            println!("Saving parents of taxon {}", args.taxid);
-            println!("{:?}", extract_parents(&taxon_to_index, &nodes, args.taxid));
+            //println!("{:?}", extract_parents(&taxon_to_index, &nodes, args.taxid));
+            taxon_ids_to_save.extend(extract_parents(&taxon_to_index, &nodes, args.taxid));
         }
+    } else {
+        taxon_ids_to_save.push(args.taxid);
     }
+
+    println!("Saving reads from taxon(s): {:?}", taxon_ids_to_save);
 
     let mut reads_to_save = HashMap::new();
     println!("Reading kraken output");
@@ -229,14 +235,14 @@ fn main() {
     let total_reads = kraken_output.lines().count();
     for line in kraken_output.lines() {
         let (taxon_id, read_id) = process_kraken_output(line);
-        if taxon_id == args.taxid {
+        if taxon_ids_to_save.contains(&taxon_id) {
             reads_to_save.insert(read_id, taxon_id);
         }
     }
     println!(
         "Done! {} total reads | {} reads to save.",
-        reads_to_save.len(),
-        total_reads
+        total_reads,
+        reads_to_save.len()
     );
 
     let mut num_lines = 0;
