@@ -106,9 +106,14 @@ fn process_kraken_report_line(kraken_report: &str) -> (i32, i32) {
     (taxon_id, level)
 }
 
-fn process_kraken_report(taxon_to_save: i32, report_path: String) -> Vec<Tree> {
+fn process_kraken_report(
+    taxon_to_save: i32,
+    report_path: String,
+) -> (Vec<Tree>, HashMap<i32, usize>) {
+    // will store the tree
     let mut nodes = Vec::new();
-    let mut taxon_to_index = HashMap::new();
+    // taxonid -> index in the nodes vector
+    let mut taxon_map = HashMap::new();
 
     let report_file = if let Ok(report_file) = fs::File::open(report_path) {
         report_file
@@ -122,16 +127,17 @@ fn process_kraken_report(taxon_to_save: i32, report_path: String) -> Vec<Tree> {
         for line in reader.lines() {
             if let Ok(line) = line {
                 let (taxon_id, level_num) = process_kraken_report_line(&line);
+                // if taxon_id == 0, it's an unclassified read so we can skip
                 if taxon_id == 0 {
                     continue;
                 }
-
+                // 1 will be the root of the tree
                 if taxon_id == 1 {
                     let root_node = Tree::new(taxon_id, level_num, None);
                     prev_index = Some(nodes.len());
                     nodes.push(root_node);
                 }
-
+                // if the current level is not the same as the previous level + 1, then we are not at the correct parent, and need to move up the tree
                 while let Some(parent_index) = prev_index {
                     if level_num != nodes[parent_index].level_num + 1 {
                         prev_index = nodes[parent_index].parent;
@@ -139,24 +145,26 @@ fn process_kraken_report(taxon_to_save: i32, report_path: String) -> Vec<Tree> {
                         break;
                     }
                 }
-
+                // once we have the correct parent, we can add the current node to the tree
                 let curr_node = Tree::new(taxon_id, level_num, prev_index);
                 let curr_index = nodes.len();
                 nodes.push(curr_node);
 
+                // add the current node to the parent's children
                 if let Some(parent_index) = prev_index {
                     nodes[parent_index].children.push(curr_index);
                 }
 
                 prev_index = Some(curr_index);
 
+                // if the current taxon is the one we want to save, add it to the map
                 if taxon_id == taxon_to_save {
-                    taxon_to_index.insert(taxon_id, curr_index);
+                    taxon_map.insert(taxon_id, curr_index);
                 }
             }
         }
     }
-    nodes
+    (nodes, taxon_map)
 }
 
 fn main() {
@@ -175,7 +183,12 @@ fn main() {
     if args.report.is_some() {
         println!("Reading kraken report");
         let tree = process_kraken_report(args.taxid, args.report.unwrap());
-
+        if args.children {
+            println!("Saving children of taxon {}", args.taxid);
+        }
+        if args.parents {
+            println!("Saving parents of taxon {}", args.taxid);
+        }
     }
 
     let mut reads_to_save = HashMap::new();
