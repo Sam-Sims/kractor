@@ -90,4 +90,20 @@ kraken-extract --kraken <kraken_output> --fastq <fastq_file> --taxid <taxonomic_
 
 
 ## Version
-- 0.2.0
+- 0.2.1
+
+## Changelog
+
+### 0.2.1:
+- Fixes to reduce memory usage
+    - Buffread the kraken output
+    - Dont assign line bytes before writing to output
+
+### 0.2.0:
+- Detect and handle `gz` files or plain files
+- `--compression` arg to select compression type
+- `zlib-ng` to speed up gzip handling
+- `--children` and `--parents` to save children and parents based on kraken report
+
+### 0.1.0:
+- First release
