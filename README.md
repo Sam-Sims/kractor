@@ -16,7 +16,7 @@ This is currently an early implementation (and my first Rust programme!), with p
 - Extract parents or the children of the specified taxon id
 - Supports both uncompressed or `gzip` inputs.
 - Multithreaded
-- ~ 720% speed up over KrakenTools 
+- ~ 300% speed up over KrakenTools 
 
 ### Benchmarks (rough):
 
@@ -27,7 +27,7 @@ Time to parse the kraken output, extract all matching reads, and write to new fa
 **KrakenTools (Output non gzip):**
 | Type | Time       |
 |------|------------|
-| real | 14m 53s |
+| real | 6m 49s |
 
 **kraken-extract:**
 | Type | Time    |
