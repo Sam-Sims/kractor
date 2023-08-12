@@ -43,7 +43,7 @@ struct Args {
     fastq: String,
     #[arg(short, long)]
     output: String,
-    #[arg(long, default_value = "default")]
+    #[arg(long, default_value = "fast")]
     compression: Option<String>,
     #[arg(long, action)]
     parents: bool,
@@ -283,8 +283,8 @@ fn main() {
         };
 
         if reads_to_save.contains_key(&current_id) {
-            let data_to_write = line_bytes.to_vec();
-            tx.send(data_to_write).unwrap();
+            //let data_to_write = line_bytes.to_vec();
+            tx.send(line_bytes.to_vec()).unwrap();
             print!("Processed {} reads\r", num_reads);
             io::stdout().flush().unwrap();
         }
