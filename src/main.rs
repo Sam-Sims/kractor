@@ -230,15 +230,20 @@ fn main() {
 
     let mut reads_to_save = HashMap::new();
     println!("Reading kraken output");
-    let kraken_output = fs::read_to_string(args.kraken).expect("Error reading kraken output file");
+    let kraken_file = fs::File::open(args.kraken).expect("Error reading kraken output file");
+    let reader = io::BufReader::new(kraken_file);
 
-    let total_reads = kraken_output.lines().count();
-    for line in kraken_output.lines() {
-        let (taxon_id, read_id) = process_kraken_output(line);
+    let mut total_reads = 0; // Initialize the total_reads counter
+
+    for line_result in reader.lines() {
+        let line = line_result.expect("Error reading kraken output line");
+        let (taxon_id, read_id) = process_kraken_output(&line);
         if taxon_ids_to_save.contains(&taxon_id) {
-            reads_to_save.insert(read_id, taxon_id);
+            reads_to_save.insert(read_id.clone(), taxon_id);
         }
+        total_reads += 1; // Increment the total_reads counter
     }
+
     println!(
         "Done! {} total reads | {} reads to save.",
         total_reads,
@@ -283,7 +288,6 @@ fn main() {
         };
 
         if reads_to_save.contains_key(&current_id) {
-            //let data_to_write = line_bytes.to_vec();
             tx.send(line_bytes.to_vec()).unwrap();
             print!("Processed {} reads\r", num_reads);
             io::stdout().flush().unwrap();
