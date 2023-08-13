@@ -10,15 +10,15 @@ I recently wanted to extract reads from a large-ish (6GB) FASTQ file (~5.5 milli
 
 This is currently an early implementation (and my first Rust programme!), with plans to expand functionality.
 
-## Current features:
+## Current features
 
 - Extract all reads from a `fastq` file based on a taxonomic id
 - Extract parents or the children of the specified taxon id
 - Supports both uncompressed or `gzip` inputs.
 - Multithreaded
-- ~ 300% speed up over KrakenTools 
+- ~ 300% speed up over KrakenTools  
 
-### Benchmarks (rough):
+### Benchmarks (rough)
 
 Based on 6.1Gb fastq.gz with 5,454,495 reads | 1.8Gb kraken output - 
 
@@ -37,11 +37,13 @@ Time to parse the kraken output, extract all matching reads, and write to new fa
 ## Installation
 
 Clone the repository:
-```
+
+```bash
 git clone https://github.com/Sam-Sims/kraken-extract
 ```
 
 Build from source:
+
 ```bash
 cd kraken-extract
 cargo build --release
@@ -52,11 +54,12 @@ All executables will be in the directory kraken-extract/target/release.
 
 ## Usage
 
-```
+```bash
 kraken-extract --kraken <kraken_output> --fastq <fastq_file> --taxid <taxonomic_id> --output <output_file>
 ```
 
 ## Arguments
+
 ```
 -k, --kraken <KRAKEN_OUTPUT>            
 -t, --taxid <TAXID>              
@@ -77,6 +80,7 @@ kraken-extract --kraken <kraken_output> --fastq <fastq_file> --taxid <taxonomic_
 `--compression`: This defines the compression mode of the output `fastq.gz` file - fast / default / best
 
 ## Future plans
+
 - [x] Support unzipped fastq files
 - [ ] Support paired end FASTQ files
 - [x] `--include-parents` and `--include-children` arguments
@@ -87,23 +91,25 @@ kraken-extract --kraken <kraken_output> --fastq <fastq_file> --taxid <taxonomic_
 - [ ] More verbose output
 - [ ] Proper benchmarks
 - [ ] Output fasta format (for blast??)
-
+- [ ] Output non gz (might be faster?)
 
 ## Version
+
 - 0.2.1
 
 ## Changelog
 
-### 0.2.1:
-- Fixes to reduce memory usage
-    - Buffread the kraken output
-    - Dont assign line bytes before writing to output
+### 0.2.1
 
-### 0.2.0:
+- Fixes to reduce memory usage
+
+### 0.2.0
+
 - Detect and handle `gz` files or plain files
 - `--compression` arg to select compression type
 - `zlib-ng` to speed up gzip handling
 - `--children` and `--parents` to save children and parents based on kraken report
 
-### 0.1.0:
+### 0.1.0
+
 - First release
