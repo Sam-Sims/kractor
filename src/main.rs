@@ -49,6 +49,8 @@ struct Args {
     parents: bool,
     #[arg(long, action)]
     children: bool,
+    #[arg(long)]
+    no_compress: bool,
 }
 
 /// Reads a FASTQ file from the specified path and returns a buffered reader.
@@ -117,7 +119,7 @@ fn process_kraken_output_line(kraken_output: &str) -> (i32, String) {
 ///
 /// This function takes a Kraken report line and processes it to extract the taxon ID
 /// and its taxonomic level. The level is calculated based on the indentation of the taxon name field.
-/// It is called in the process_kraken_report function. 
+/// It is called in the process_kraken_report function.
 ///
 /// # Arguments
 ///
@@ -230,11 +232,7 @@ fn build_tree_from_kraken_report(
 /// # Returns
 ///
 /// A vector containing the taxon IDs of the lineage of parent nodes, including the provided taxon ID.
-fn extract_parents(
-    taxon_map: &HashMap<i32, usize>,
-    nodes: &Vec<Tree>,
-    taxon_id: i32,
-) -> Vec<i32> {
+fn extract_parents(taxon_map: &HashMap<i32, usize>, nodes: &Vec<Tree>, taxon_id: i32) -> Vec<i32> {
     // Backtracking traversal from the given taxon_id to the root
     let mut parents = Vec::new();
     parents.push(taxon_id);
@@ -259,9 +257,9 @@ fn extract_parents(
 /// * `nodes` - The tree.
 /// * `start_index` - The node to start the traversal from.
 /// * `result` - Stores the extracted child taxon IDs.
-/// 
+///
 /// # Returns
-/// 
+///
 /// A vector containing the taxon IDs of the children of the specified taxon ID, including the provided taxon ID.
 fn extract_children(nodes: &Vec<Tree>, start_index: usize, result: &mut Vec<i32>) {
     // recursive post-order traversal of the tree
@@ -273,9 +271,9 @@ fn extract_children(nodes: &Vec<Tree>, start_index: usize, result: &mut Vec<i32>
 
 /// Collects taxon IDs to save.
 ///
-/// This function determines what taxon IDs need to be saved from the kraken output. 
-/// If a Kraken report is specified, it builds a tree of all taxons in the report and extracts taxon IDs based 
-/// on if --children or --parent are supplied. If no report is provided, the function returns only the given taxon ID 
+/// This function determines what taxon IDs need to be saved from the kraken output.
+/// If a Kraken report is specified, it builds a tree of all taxons in the report and extracts taxon IDs based
+/// on if --children or --parent are supplied. If no report is provided, the function returns only the given taxon ID
 /// in the list of taxon IDs to save.
 ///
 /// # Arguments
@@ -351,8 +349,14 @@ fn main() {
     let (tx, rx) = channel::<Vec<u8>>();
     let writer_thread = thread::spawn(move || {
         let out_file = fs::File::create(args.output).expect("Error creating output file");
-        let out_gzip = GzEncoder::new(out_file, compression_mode);
-        let mut out_buf = io::BufWriter::new(out_gzip);
+        let mut out_buf: Box<dyn io::Write> = if args.no_compress {
+            Box::new(io::BufWriter::new(out_file))
+        } else {
+            Box::new(io::BufWriter::new(GzEncoder::new(
+                out_file,
+                compression_mode,
+            )))
+        };
 
         for data in rx {
             out_buf

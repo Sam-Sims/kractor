@@ -91,7 +91,7 @@ kraken-extract --kraken <kraken_output> --fastq <fastq_file> --taxid <taxonomic_
 - [ ] More verbose output
 - [ ] Proper benchmarks
 - [ ] Output fasta format (for blast??)
-- [ ] Output non gz (might be faster?)
+- [x] Output non `gz`
 
 ## Version
 
