@@ -51,6 +51,8 @@ struct Args {
     children: bool,
     #[arg(long)]
     no_compress: bool,
+    #[arg(long)]
+    exclude: bool,
 }
 
 /// Reads a FASTQ file from the specified path and returns a buffered reader.
@@ -331,13 +333,19 @@ fn main() {
     for line_result in reader.lines() {
         let line = line_result.expect("Error reading kraken output line");
         let (taxon_id, read_id) = process_kraken_output_line(&line);
-        if taxon_ids_to_save.contains(&taxon_id) {
-            reads_to_save.insert(read_id.clone(), taxon_id);
+        if args.exclude {
+            if !taxon_ids_to_save.contains(&taxon_id) {
+                reads_to_save.insert(read_id.clone(), taxon_id);
+            }
+        } else {
+            if taxon_ids_to_save.contains(&taxon_id) {
+                reads_to_save.insert(read_id.clone(), taxon_id);
+            }
         }
         total_reads += 1;
     }
     println!("Done!");
-    println!("{} taxon IDs to save", taxon_ids_to_save.len());
+    println!("{} taxon IDs identified", taxon_ids_to_save.len());
     println!(
         "{} total reads | {} reads to save.",
         total_reads,

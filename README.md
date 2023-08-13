@@ -79,19 +79,24 @@ kraken-extract --kraken <kraken_output> --fastq <fastq_file> --taxid <taxonomic_
 
 `--compression`: This defines the compression mode of the output `fastq.gz` file - fast / default / best
 
+`--no-compress`: This will output a plaintext `fastq` file
+
+`--exclude`: This will output every read except those matching the taxid. Works with `--parents` and `--children`
+
 ## Future plans
 
 - [x] Support unzipped fastq files
 - [ ] Support paired end FASTQ files
 - [x] `--include-parents` and `--include-children` arguments
 - [ ] Supply multiple taxonomic IDs to extract
-- [ ] Exclude taxonomic IDs
+- [x] Exclude taxonomic IDs
 - [ ] `--append`
 - [x] `--compression-mode <fast/default/best>`
-- [ ] More verbose output
+- [x] More verbose output
 - [ ] Proper benchmarks
 - [ ] Output fasta format (for blast??)
 - [x] Output non `gz`
+- [ ] Tests
 
 ## Version
 
