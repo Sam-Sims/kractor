@@ -66,11 +66,13 @@ kraken-extract --kraken <kraken_output> --fastq <fastq_file> --taxid <taxonomic_
 -r, --report <REPORT_OUTPUT>            
 -f, --fastq <FASTQ_FILE>              
 -o, --output <OUTPUT_LOCATION>            
---compression <COMPRESSION>      [default: default]
+--compression <COMPRESSION>      [default: fast]         
 --parents                    
 --children                   
--h, --help                       Print help
--V, --version                    Print version
+--no-compress                
+--exclude                    
+  -h, --help                       Print help
+  -V, --version                    Print version
 ```
 
 `--parents`: This will extract all the reads classified at all taxons between the root and the specified `--taxid`
