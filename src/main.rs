@@ -88,32 +88,6 @@ fn read_fastq(path: &str) -> io::BufReader<Box<dyn io::Read>> {
     }
 }
 
-fn extract_parents(
-    taxon_to_index: &HashMap<i32, usize>,
-    nodes: &Vec<Tree>,
-    taxon_id: i32,
-) -> Vec<i32> {
-    // Backtracking traversal from the given taxon_id to the root
-    let mut parents = Vec::new();
-    parents.push(taxon_id);
-    let mut curr_index = taxon_to_index[&taxon_id];
-
-    while let Some(parent_index) = nodes[curr_index].parent {
-        parents.push(nodes[parent_index].taxon_id);
-        curr_index = parent_index;
-    }
-
-    parents
-}
-
-fn extract_children(nodes: &Vec<Tree>, start_index: usize, result: &mut Vec<i32>) {
-    // recursive post-order traversal of the tree
-    for &child_index in &nodes[start_index].children {
-        extract_children(nodes, child_index, result);
-    }
-    result.push(nodes[start_index].taxon_id);
-}
-
 fn process_kraken_report_line(kraken_report: &str) -> (i32, i32) {
     let fields: Vec<&str> = kraken_report.split('\t').collect();
     let taxon_id = fields[4].parse::<i32>().unwrap();
@@ -175,14 +149,14 @@ fn process_kraken_report(
                 let curr_index = nodes.len();
                 nodes.push(curr_node);
 
-                // add the current node to the parent's children
+                // add the current node
                 if let Some(parent_index) = prev_index {
                     nodes[parent_index].children.push(curr_index);
                 }
 
                 prev_index = Some(curr_index);
 
-                // if the current taxon is the one we want to save, add it to the map
+                // if the current taxon is one we want to save, add it to the map
                 if taxon_id == taxon_to_save {
                     taxon_map.insert(taxon_id, curr_index);
                 }
@@ -192,9 +166,57 @@ fn process_kraken_report(
     (nodes, taxon_map)
 }
 
+fn extract_parents(
+    taxon_to_index: &HashMap<i32, usize>,
+    nodes: &Vec<Tree>,
+    taxon_id: i32,
+) -> Vec<i32> {
+    // Backtracking traversal from the given taxon_id to the root
+    let mut parents = Vec::new();
+    parents.push(taxon_id);
+    let mut curr_index = taxon_to_index[&taxon_id];
+
+    while let Some(parent_index) = nodes[curr_index].parent {
+        parents.push(nodes[parent_index].taxon_id);
+        curr_index = parent_index;
+    }
+
+    parents
+}
+
+fn extract_children(nodes: &Vec<Tree>, start_index: usize, result: &mut Vec<i32>) {
+    // recursive post-order traversal of the tree
+    for &child_index in &nodes[start_index].children {
+        extract_children(nodes, child_index, result);
+    }
+    result.push(nodes[start_index].taxon_id);
+}
+
+fn collect_taxons_to_save(args: &Args) -> Vec<i32> {
+    let mut taxon_ids_to_save = Vec::new();
+    if args.report.is_some() {
+        print!("  Processing kraken report...");
+        io::stdout().flush().unwrap();
+        let report_path = args.report.clone().unwrap();
+        let (nodes, taxon_to_index) = process_kraken_report(args.taxid, report_path);
+        if args.children {
+            let mut children = Vec::new();
+            extract_children(&nodes, taxon_to_index[&args.taxid], &mut children);
+            taxon_ids_to_save.extend(&children);
+        } else if args.parents {
+            taxon_ids_to_save.extend(extract_parents(&taxon_to_index, &nodes, args.taxid));
+        } else {
+            taxon_ids_to_save.push(args.taxid);
+        }
+    } else {
+        taxon_ids_to_save.push(args.taxid);
+    }
+    println!("Done!");
+    taxon_ids_to_save
+}
+
 fn main() {
     let args = Args::parse();
-
     let compression_mode = match args.compression.as_deref() {
         Some("fast") => Compression::fast(),
         Some("default") => Compression::default(),
@@ -204,58 +226,36 @@ fn main() {
             Compression::default()
         }
     };
-    // if --report is provided, read the report and build the tree
-    let mut taxon_ids_to_save = Vec::new();
-
-    if args.report.is_some() {
-        println!("Reading kraken report");
-        let (nodes, taxon_to_index) =
-            process_kraken_report(args.taxid, args.report.unwrap().to_string());
-        if args.children {
-            // declearing children here so that it's not reallocated every time the function is called
-            let mut children = Vec::new();
-            extract_children(&nodes, taxon_to_index[&args.taxid], &mut children);
-            //println!("{:?}", children);
-            taxon_ids_to_save.extend(children);
-        }
-        if args.parents {
-            //println!("{:?}", extract_parents(&taxon_to_index, &nodes, args.taxid));
-            taxon_ids_to_save.extend(extract_parents(&taxon_to_index, &nodes, args.taxid));
-        }
-    } else {
-        taxon_ids_to_save.push(args.taxid);
-    }
-
-    println!("Saving reads from taxon(s): {:?}", taxon_ids_to_save);
-
+    // returns a vector of taxon ids to save - either just the taxon id given, or if a report is given, will parse the report
+    println!(">> Step 1: Collecting taxon and read IDs to save");
+    let taxon_ids_to_save = collect_taxons_to_save(&args);
     let mut reads_to_save = HashMap::new();
-    println!("Reading kraken output");
+
+    print!("  Processing kraken output...");
+    io::stdout().flush().unwrap();
+
     let kraken_file = fs::File::open(args.kraken).expect("Error reading kraken output file");
     let reader = io::BufReader::new(kraken_file);
 
-    let mut total_reads = 0; // Initialize the total_reads counter
-
+    let mut total_reads = 0;
     for line_result in reader.lines() {
         let line = line_result.expect("Error reading kraken output line");
         let (taxon_id, read_id) = process_kraken_output(&line);
         if taxon_ids_to_save.contains(&taxon_id) {
             reads_to_save.insert(read_id.clone(), taxon_id);
         }
-        total_reads += 1; // Increment the total_reads counter
+        total_reads += 1;
     }
-
+    println!("Done!");
+    println!("{} taxon IDs to save", taxon_ids_to_save.len());
     println!(
-        "Done! {} total reads | {} reads to save.",
+        "{} total reads | {} reads to save.",
         total_reads,
         reads_to_save.len()
     );
+    println!(">> Step 2: Extracting reads to save and creating output");
 
-    let mut num_lines = 0;
-    let mut num_reads = 0;
-    let mut current_id: String = String::new();
-
-    let in_buf = read_fastq(&args.fastq);
-
+    // Spawn the writer thread
     let (tx, rx) = channel::<Vec<u8>>();
     let writer_thread = thread::spawn(move || {
         let out_file = fs::File::create(args.output).expect("Error creating output file");
@@ -270,7 +270,13 @@ fn main() {
                 .expect("Error writing to output file");
         }
     });
-    println!("Reading fastq:");
+
+    let mut num_lines = 0;
+    let mut num_reads = 0;
+    let mut current_id: String = String::new();
+    let in_buf = read_fastq(&args.fastq);
+
+    println!("  Reading fastq:");
 
     for line in in_buf.lines() {
         let line = line.unwrap();
@@ -289,11 +295,11 @@ fn main() {
 
         if reads_to_save.contains_key(&current_id) {
             tx.send(line_bytes.to_vec()).unwrap();
-            print!("Processed {} reads\r", num_reads);
+            print!("  Processed {} reads\r", num_reads);
             io::stdout().flush().unwrap();
         }
     }
-    println!("Processing is done. Writing is in progress...");
+    println!("  Processing is done. Writing is in progress...");
     drop(tx);
 
     writer_thread.join().unwrap();
