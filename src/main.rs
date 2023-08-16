@@ -4,6 +4,7 @@ use std::{
     collections::HashMap,
     fs::{self},
     io::{self, prelude::*, BufWriter},
+    os::unix::process,
     sync::mpsc::channel,
     thread,
 };
@@ -117,6 +118,104 @@ fn process_kraken_output_line(kraken_output: &str) -> (i32, String) {
     return (taxon_id, read_id);
 }
 
+/// Processes the Kraken output file to extract read ID
+/// 
+/// This function takes the kraken output file and processes each line to extract the taxon id and read id.
+/// Read IDs that match the taxon IDs to save are stored in a hashmap.
+/// 
+/// # Arguments
+/// 
+/// `kraken_path` - A string containing the path to the Kraken output file.
+/// `exclude` - A boolean indicating whether to exclude or include the taxon IDs to save.
+/// `taxon_ids_to_save` - A vector containing the taxon IDs to save.
+/// 
+/// # Returns
+/// 
+/// A hashmap containing the read IDs to save as keys and the taxon IDs as values.
+fn process_kraken_output(
+    kraken_path: String,
+    exclude: bool,
+    taxon_ids_to_save: Vec<i32>,
+) -> HashMap<String, i32> {
+    let mut reads_to_save = HashMap::new();
+    let kraken_file = fs::File::open(kraken_path).expect("Error reading kraken output file");
+    let reader = io::BufReader::new(kraken_file);
+    let mut total_reads = 0;
+
+    for line_result in reader.lines() {
+        let line = line_result.expect("Error reading kraken output line");
+        let (taxon_id, read_id) = process_kraken_output_line(&line);
+        if exclude {
+            if !taxon_ids_to_save.contains(&taxon_id) {
+                reads_to_save.insert(read_id.clone(), taxon_id);
+            }
+        } else {
+            if taxon_ids_to_save.contains(&taxon_id) {
+                reads_to_save.insert(read_id.clone(), taxon_id);
+            }
+        }
+        total_reads += 1;
+    }
+    println!("Done!");
+    println!("{} taxon IDs identified", taxon_ids_to_save.len());
+    println!(
+        "{} total reads | {} reads to save.",
+        total_reads,
+        reads_to_save.len()
+    );
+    reads_to_save
+}
+
+/// Extracts the taxon ID of all parents for a given taxon ID.
+///
+/// This function implements a backtracking traversal from the specified `taxon_id` to the root.
+///
+/// # Arguments
+///
+/// * `taxon_map` - Mapping of taxon IDs to their corresponding indices in the `nodes` vector.
+/// * `nodes` - The tree.
+/// * `taxon_id` - The taxon ID for which to extract the lineage of parent taxon IDs.
+///
+/// # Returns
+///
+/// A vector containing the taxon IDs of the lineage of parent nodes, including the provided taxon ID.
+fn extract_parents(taxon_map: &HashMap<i32, usize>, nodes: &Vec<Tree>, taxon_id: i32) -> Vec<i32> {
+    // Backtracking traversal from the given taxon_id to the root
+    let mut parents = Vec::new();
+    parents.push(taxon_id);
+    let mut curr_index = taxon_map[&taxon_id];
+
+    while let Some(parent_index) = nodes[curr_index].parent {
+        parents.push(nodes[parent_index].taxon_id);
+        curr_index = parent_index;
+    }
+
+    parents
+}
+
+/// Extracts the taxon IDs of children nodes from a given taxon ID.
+///
+/// This function implements a recursive post-order traversal of the tree starting from
+/// the specified taxon. It collects the taxon IDs of child nodes and appends them to the
+/// provided result vector.
+///
+/// # Arguments
+///
+/// * `nodes` - The tree.
+/// * `start_index` - The node to start the traversal from.
+/// * `result` - Stores the extracted child taxon IDs.
+///
+/// # Returns
+///
+/// A vector containing the taxon IDs of the children of the specified taxon ID, including the provided taxon ID.
+fn extract_children(nodes: &Vec<Tree>, start_index: usize, result: &mut Vec<i32>) {
+    // recursive post-order traversal of the tree
+    for &child_index in &nodes[start_index].children {
+        extract_children(nodes, child_index, result);
+    }
+    result.push(nodes[start_index].taxon_id);
+}
+
 /// Parses a Kraken report line to extract taxon ID and its corresponding level.
 ///
 /// This function takes a Kraken report line and processes it to extract the taxon ID
@@ -221,56 +320,6 @@ fn build_tree_from_kraken_report(
     (nodes, taxon_map)
 }
 
-/// Extracts the taxon ID of all parents for a given taxon ID.
-///
-/// This function implements a backtracking traversal from the specified `taxon_id` to the root.
-///
-/// # Arguments
-///
-/// * `taxon_map` - Mapping of taxon IDs to their corresponding indices in the `nodes` vector.
-/// * `nodes` - The tree.
-/// * `taxon_id` - The taxon ID for which to extract the lineage of parent taxon IDs.
-///
-/// # Returns
-///
-/// A vector containing the taxon IDs of the lineage of parent nodes, including the provided taxon ID.
-fn extract_parents(taxon_map: &HashMap<i32, usize>, nodes: &Vec<Tree>, taxon_id: i32) -> Vec<i32> {
-    // Backtracking traversal from the given taxon_id to the root
-    let mut parents = Vec::new();
-    parents.push(taxon_id);
-    let mut curr_index = taxon_map[&taxon_id];
-
-    while let Some(parent_index) = nodes[curr_index].parent {
-        parents.push(nodes[parent_index].taxon_id);
-        curr_index = parent_index;
-    }
-
-    parents
-}
-
-/// Extracts the taxon IDs of children nodes from a given taxon ID.
-///
-/// This function implements a recursive post-order traversal of the tree starting from
-/// the specified taxon. It collects the taxon IDs of child nodes and appends them to the
-/// provided result vector.
-///
-/// # Arguments
-///
-/// * `nodes` - The tree.
-/// * `start_index` - The node to start the traversal from.
-/// * `result` - Stores the extracted child taxon IDs.
-///
-/// # Returns
-///
-/// A vector containing the taxon IDs of the children of the specified taxon ID, including the provided taxon ID.
-fn extract_children(nodes: &Vec<Tree>, start_index: usize, result: &mut Vec<i32>) {
-    // recursive post-order traversal of the tree
-    for &child_index in &nodes[start_index].children {
-        extract_children(nodes, child_index, result);
-    }
-    result.push(nodes[start_index].taxon_id);
-}
-
 /// Collects taxon IDs to save.
 ///
 /// This function determines what taxon IDs need to be saved from the kraken output.
@@ -301,10 +350,10 @@ fn collect_taxons_to_save(args: &Args) -> Vec<i32> {
         } else {
             taxon_ids_to_save.push(args.taxid);
         }
+        println!("Done!");
     } else {
         taxon_ids_to_save.push(args.taxid);
     }
-    println!("Done!");
     taxon_ids_to_save
 }
 
@@ -321,36 +370,10 @@ fn main() {
     };
     println!(">> Step 1: Collecting taxon and read IDs to save");
     let taxon_ids_to_save = collect_taxons_to_save(&args);
-    let mut reads_to_save = HashMap::new();
-
     print!("  Processing kraken output...");
     io::stdout().flush().unwrap();
+    let reads_to_save = process_kraken_output(args.kraken, args.exclude, taxon_ids_to_save);
 
-    let kraken_file = fs::File::open(args.kraken).expect("Error reading kraken output file");
-    let reader = io::BufReader::new(kraken_file);
-
-    let mut total_reads = 0;
-    for line_result in reader.lines() {
-        let line = line_result.expect("Error reading kraken output line");
-        let (taxon_id, read_id) = process_kraken_output_line(&line);
-        if args.exclude {
-            if !taxon_ids_to_save.contains(&taxon_id) {
-                reads_to_save.insert(read_id.clone(), taxon_id);
-            }
-        } else {
-            if taxon_ids_to_save.contains(&taxon_id) {
-                reads_to_save.insert(read_id.clone(), taxon_id);
-            }
-        }
-        total_reads += 1;
-    }
-    println!("Done!");
-    println!("{} taxon IDs identified", taxon_ids_to_save.len());
-    println!(
-        "{} total reads | {} reads to save.",
-        total_reads,
-        reads_to_save.len()
-    );
     println!(">> Step 2: Extracting reads to save and creating output");
 
     // Spawn the writer thread
