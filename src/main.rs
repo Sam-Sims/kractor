@@ -3,7 +3,7 @@ use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use std::{
     collections::HashMap,
     fs::{self},
-    io::{self, prelude::*},
+    io::{self, prelude::*, BufWriter},
     sync::mpsc::channel,
     thread,
 };
@@ -370,28 +370,32 @@ fn main() {
             out_buf
                 .write_all(&data)
                 .and_then(|_| out_buf.write_all(b"\n"))
-                .and_then(|_| out_buf.flush())
                 .expect("Error writing to output file");
         }
+        out_buf.flush().expect("Error flushing output buffer");
     });
 
     let mut num_lines = 0;
     let mut num_reads = 0;
     let mut current_id: String = String::new();
     let in_buf = read_fastq(&args.fastq);
+    let mut stdout = BufWriter::new(io::stdout().lock());
+    let mut line_bytes = Vec::new();
 
     println!("  Reading fastq:");
 
     for line in in_buf.lines() {
-        let line = line.unwrap();
-        let line_bytes = line.as_bytes();
+        let line = line.expect("Error reading fastq line");
+        line_bytes.clear();
+        //let line_bytes = line.as_bytes();
+        line_bytes.extend_from_slice(line.as_bytes());
         num_lines += 1;
 
         match num_lines % 4 {
             1 => {
                 let fields: Vec<&str> = line.split_whitespace().collect();
-                let read_id = fields[0].to_string();
-                current_id = read_id[1..].to_string();
+                let read_id = &fields[0][1..];
+                current_id = read_id.to_string();
                 num_reads += 1;
             }
             _ => {}
@@ -399,8 +403,8 @@ fn main() {
 
         if reads_to_save.contains_key(&current_id) {
             tx.send(line_bytes.to_vec()).unwrap();
-            print!("  Processed {} reads\r", num_reads);
-            io::stdout().flush().unwrap();
+            write!(stdout, "  \rProcessed {} reads", num_reads).unwrap();
+            //stdout.flush().unwrap();
         }
     }
     println!("  Processing is done. Writing is in progress...");
