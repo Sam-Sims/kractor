@@ -4,8 +4,7 @@ use std::{
     collections::HashMap,
     fs::{self},
     io::{self, prelude::*, BufWriter},
-    os::unix::process,
-    sync::mpsc::channel,
+    sync::mpsc::{channel, Sender},
     thread,
 };
 
@@ -119,18 +118,18 @@ fn process_kraken_output_line(kraken_output: &str) -> (i32, String) {
 }
 
 /// Processes the Kraken output file to extract read ID
-/// 
+///
 /// This function takes the kraken output file and processes each line to extract the taxon id and read id.
 /// Read IDs that match the taxon IDs to save are stored in a hashmap.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// `kraken_path` - A string containing the path to the Kraken output file.
 /// `exclude` - A boolean indicating whether to exclude or include the taxon IDs to save.
 /// `taxon_ids_to_save` - A vector containing the taxon IDs to save.
-/// 
+///
 /// # Returns
-/// 
+///
 /// A hashmap containing the read IDs to save as keys and the taxon IDs as values.
 fn process_kraken_output(
     kraken_path: String,
@@ -357,6 +356,43 @@ fn collect_taxons_to_save(args: &Args) -> Vec<i32> {
     taxon_ids_to_save
 }
 
+fn parse_fastq(
+    in_buf: io::BufReader<Box<dyn Read>>,
+    tx: &Sender<Vec<u8>>,
+    reads_to_save: HashMap<String, i32>,
+) {
+    let mut num_lines = 0;
+    let mut num_reads = 0;
+    let mut current_id: String = String::new();
+    let mut stdout = BufWriter::new(io::stdout().lock());
+    let mut line_bytes = Vec::new();
+
+    println!("  Reading fastq:");
+
+    for line in in_buf.lines() {
+        let line = line.expect("Error reading fastq line");
+        line_bytes.clear();
+        //let line_bytes = line.as_bytes();
+        line_bytes.extend_from_slice(line.as_bytes());
+        num_lines += 1;
+
+        match num_lines % 4 {
+            1 => {
+                let fields: Vec<&str> = line.split_whitespace().collect();
+                let read_id = &fields[0][1..];
+                current_id = read_id.to_string();
+                num_reads += 1;
+            }
+            _ => {}
+        };
+
+        if reads_to_save.contains_key(&current_id) {
+            tx.send(line_bytes.to_vec()).unwrap();
+            write!(stdout, "  \rProcessed {} reads", num_reads).unwrap();
+            //stdout.flush().unwrap();
+        }
+    }
+}
 fn main() {
     let args = Args::parse();
     let compression_mode = match args.compression.as_deref() {
@@ -398,38 +434,9 @@ fn main() {
         out_buf.flush().expect("Error flushing output buffer");
     });
 
-    let mut num_lines = 0;
-    let mut num_reads = 0;
-    let mut current_id: String = String::new();
     let in_buf = read_fastq(&args.fastq);
-    let mut stdout = BufWriter::new(io::stdout().lock());
-    let mut line_bytes = Vec::new();
+    parse_fastq(in_buf, &tx, reads_to_save);
 
-    println!("  Reading fastq:");
-
-    for line in in_buf.lines() {
-        let line = line.expect("Error reading fastq line");
-        line_bytes.clear();
-        //let line_bytes = line.as_bytes();
-        line_bytes.extend_from_slice(line.as_bytes());
-        num_lines += 1;
-
-        match num_lines % 4 {
-            1 => {
-                let fields: Vec<&str> = line.split_whitespace().collect();
-                let read_id = &fields[0][1..];
-                current_id = read_id.to_string();
-                num_reads += 1;
-            }
-            _ => {}
-        };
-
-        if reads_to_save.contains_key(&current_id) {
-            tx.send(line_bytes.to_vec()).unwrap();
-            write!(stdout, "  \rProcessed {} reads", num_reads).unwrap();
-            //stdout.flush().unwrap();
-        }
-    }
     println!("  Processing is done. Writing is in progress...");
     drop(tx);
 
