@@ -141,6 +141,7 @@ fn process_kraken_output(
     let reader = io::BufReader::new(kraken_file);
     let mut total_reads = 0;
 
+    print!("  Processing kraken output...");
     for line_result in reader.lines() {
         let line = line_result.expect("Error reading kraken output line");
         let (taxon_id, read_id) = process_kraken_output_line(&line);
@@ -156,9 +157,9 @@ fn process_kraken_output(
         total_reads += 1;
     }
     println!("Done!");
-    println!("{} taxon IDs identified", taxon_ids_to_save.len());
+    println!("  {} taxon IDs identified", taxon_ids_to_save.len());
     println!(
-        "{} total reads | {} reads to save.",
+        "  {} total reads | {} reads to save.",
         total_reads,
         reads_to_save.len()
     );
@@ -356,6 +357,17 @@ fn collect_taxons_to_save(args: &Args) -> Vec<i32> {
     taxon_ids_to_save
 }
 
+/// Parse a FASTQ file and send reads to writer thread.
+///
+/// This function reads a fastq file and extracts read IDs and sequences.
+/// It compares the read IDs against a given HashMap of read IDs (`reads_to_save`) and sends
+/// the sequences of matching read IDs to the writer thread.
+///
+/// # Arguments
+///
+/// * `in_buf` - A buffered reader for the Fastq file.
+/// * `tx` - A channel sender for sending sequences of selected reads.
+/// * `reads_to_save` - A HashMap containing read IDs and corresponding taxon IDs.
 fn parse_fastq(
     in_buf: io::BufReader<Box<dyn Read>>,
     tx: &Sender<Vec<u8>>,
@@ -388,7 +400,7 @@ fn parse_fastq(
 
         if reads_to_save.contains_key(&current_id) {
             tx.send(line_bytes.to_vec()).unwrap();
-            write!(stdout, "  \rProcessed {} reads", num_reads).unwrap();
+            write!(stdout, "  Processed {} reads\r", num_reads).unwrap();
             //stdout.flush().unwrap();
         }
     }
@@ -406,7 +418,6 @@ fn main() {
     };
     println!(">> Step 1: Collecting taxon and read IDs to save");
     let taxon_ids_to_save = collect_taxons_to_save(&args);
-    print!("  Processing kraken output...");
     io::stdout().flush().unwrap();
     let reads_to_save = process_kraken_output(args.kraken, args.exclude, taxon_ids_to_save);
 
