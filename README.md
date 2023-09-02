@@ -6,17 +6,18 @@ Written in Rust.
 
 ## Background
 
-I recently wanted to extract reads from a large-ish (6GB) FASTQ file (~5.5 million reads), based on taxonomic classifications. For that I used the great [KrakenTools](https://github.com/jenniferlu717/KrakenTools). This however took a while both parse the Kraken2 output file and extract/write the matching reads. Having been wanting to experiment with Rust for a while, this inspired me to re-implement the `extract_kraken_reads.py` script in Rust as a learning exercise.
+I recently wanted to extract reads from a medium-ish sized (6GB) FASTQ file (~5.5 million reads), based on taxonomic classifications. For that I used the great [KrakenTools](https://github.com/jenniferlu717/KrakenTools). This however took a while both parse the Kraken2 output file and extract/write the matching reads. Having been wanting to experiment with Rust for a while, this inspired me to re-implement the `extract_kraken_reads.py` script in Rust as a learning exercise.
 
 This is currently an early implementation (and my first Rust programme!), with plans to expand functionality.
 
 ## Current features
 
 - Extract all reads from a `fastq` file based on a taxonomic id
+- Supports interleaved `fastq` files
 - Extract parents or the children of the specified taxon id
 - Supports both uncompressed or `gzip` inputs.
 - Multithreaded
-- ~ 300% speed up over KrakenTools  
+- ~ 550% speed up compared to KrakenTools
 
 ### Benchmarks (rough)
 
@@ -24,7 +25,7 @@ Based on 6.1Gb fastq.gz with 5,454,495 reads | 1.8Gb kraken output -
 
 Time to parse the kraken output, extract all matching reads, and write to new fastq file.
 
-**KrakenTools (Output non gzip):**
+**KrakenTools:**
 | Type | Time       |
 |------|------------|
 | real | 6m 49s |
@@ -32,7 +33,7 @@ Time to parse the kraken output, extract all matching reads, and write to new fa
 **kraken-extract:**
 | Type | Time    |
 |------|---------|
-| real | 2m 04s |
+| real | 1m 15s |
 
 ## Installation
 
@@ -66,7 +67,7 @@ kraken-extract --kraken <kraken_output> --fastq <fastq_file> --taxid <taxonomic_
 -r, --report <REPORT_OUTPUT>            
 -f, --fastq <FASTQ_FILE>              
 -o, --output <OUTPUT_LOCATION>            
---compression <COMPRESSION>      [default: fast]         
+--compression_mode <COMPRESSION>      [default: fast]         
 --parents                    
 --children                   
 --no-compress                
@@ -79,7 +80,7 @@ kraken-extract --kraken <kraken_output> --fastq <fastq_file> --taxid <taxonomic_
 
 `--children`: This will extract all the reads classified as decendents or subtaxa of `--taxid` (Including the taxid)
 
-`--compression`: This defines the compression mode of the output `fastq.gz` file - fast / default / best
+`--compression_mode`: This defines the compression mode of the output `fastq.gz` file - fast / default / best
 
 `--no-compress`: This will output a plaintext `fastq` file
 
