@@ -1,6 +1,6 @@
 # kraken-extract
 
-[![Build Status](https://app.travis-ci.com/Sam-Sims/krakenXtract.svg?branch=main)](https://app.travis-ci.com/Sam-Sims/krakenXtract)
+[![Release](https://github.com/Sam-Sims/krakenXtract/actions/workflows/release.yaml/badge.svg)](https://github.com/Sam-Sims/krakenXtract/actions/workflows/release.yaml)
 
 Extract reads from a FASTQ file based on taxonomic classification via Kraken2.
 
