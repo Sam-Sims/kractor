@@ -43,17 +43,19 @@ Download the latest release.
 
 Alternatively, build from source:
 
-1. Clone the repository:
+Clone the repository:
 
 ```bash
 git clone https://github.com/Sam-Sims/kraken-extract
 ```
 
-2. Install rust/cargo:
+Install rust/cargo:
+
+To install please refer to the rust documentation:
 
 [See the docs](https://doc.rust-lang.org/cargo/getting-started/installation.html)
 
-3. Build and add to path:
+Build and add to path:
 
 ```bash
 cd kraken-extract
