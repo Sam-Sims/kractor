@@ -103,11 +103,16 @@ kraken-extract --kraken <kraken_output> --fastq <fastq_file> --taxid <taxonomic_
 
 ## Version
 
-- 0.2.2
+- 0.2.3
 
 ## Changelog
 
+### 0.2.3
+
+- Code optimisations
+
 ### 0.2.2
+
 - Increased verbosity of outputs to user
 - `--no-compress` flag to output a standard, plaintext fastq file
 - `--exclude` to exclude specified reads. Works with `--children` and `--parents`
