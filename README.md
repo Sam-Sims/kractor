@@ -1,5 +1,7 @@
 # kraken-extract
 
+[![Build Status](https://app.travis-ci.com/Sam-Sims/krakenXtract.svg?branch=main)](https://app.travis-ci.com/Sam-Sims/krakenXtract)
+
 Extract reads from a FASTQ file based on taxonomic classification via Kraken2.
 
 Written in Rust.
@@ -37,13 +39,21 @@ Time to parse the kraken output, extract all matching reads, and write to new fa
 
 ## Installation
 
-Clone the repository:
+Download the latest release.
+
+Alternatively, build from source:
+
+1. Clone the repository:
 
 ```bash
 git clone https://github.com/Sam-Sims/kraken-extract
 ```
 
-Build from source:
+2. Install rust/cargo:
+
+[See the docs](https://doc.rust-lang.org/cargo/getting-started/installation.html)
+
+3. Build and add to path:
 
 ```bash
 cd kraken-extract
