@@ -1,4 +1,4 @@
-# kraken-extract
+# krakenXtract
 
 [![Release](https://github.com/Sam-Sims/krakenXtract/actions/workflows/release.yaml/badge.svg)](https://github.com/Sam-Sims/krakenXtract/actions/workflows/release.yaml)
 ![GitHub release (with filter)](https://img.shields.io/github/v/release/sam-sims/krakenxtract)
