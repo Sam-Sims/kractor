@@ -44,7 +44,7 @@ struct Args {
     #[arg(short, long)]
     output: String,
     #[arg(long, default_value = "fast")]
-    compression: Option<String>,
+    compression_mode: Option<String>,
     #[arg(long, action)]
     parents: bool,
     #[arg(long, action)]
@@ -114,7 +114,7 @@ fn process_kraken_output_line(kraken_output: &str) -> (i32, String) {
     let fields: Vec<&str> = kraken_output.split('\t').collect();
     let taxon_id = fields[2].parse::<i32>().expect("Error parsing taxon ID");
     let read_id = fields[1].to_string();
-    return (taxon_id, read_id);
+    (taxon_id, read_id)
 }
 
 /// Processes the Kraken output file to extract read ID
@@ -142,6 +142,7 @@ fn process_kraken_output(
     let mut total_reads = 0;
 
     print!("  Processing kraken output...");
+    io::stdout().flush().unwrap();
     for line_result in reader.lines() {
         let line = line_result.expect("Error reading kraken output line");
         let (taxon_id, read_id) = process_kraken_output_line(&line);
@@ -149,10 +150,8 @@ fn process_kraken_output(
             if !taxon_ids_to_save.contains(&taxon_id) {
                 reads_to_save.insert(read_id.clone(), taxon_id);
             }
-        } else {
-            if taxon_ids_to_save.contains(&taxon_id) {
-                reads_to_save.insert(read_id.clone(), taxon_id);
-            }
+        } else if taxon_ids_to_save.contains(&taxon_id) {
+            reads_to_save.insert(read_id.clone(), taxon_id);
         }
         total_reads += 1;
     }
@@ -179,7 +178,7 @@ fn process_kraken_output(
 /// # Returns
 ///
 /// A vector containing the taxon IDs of the lineage of parent nodes, including the provided taxon ID.
-fn extract_parents(taxon_map: &HashMap<i32, usize>, nodes: &Vec<Tree>, taxon_id: i32) -> Vec<i32> {
+fn extract_parents(taxon_map: &HashMap<i32, usize>, nodes: &[Tree], taxon_id: i32) -> Vec<i32> {
     // Backtracking traversal from the given taxon_id to the root
     let mut parents = Vec::new();
     parents.push(taxon_id);
@@ -231,12 +230,14 @@ fn extract_children(nodes: &Vec<Tree>, start_index: usize, result: &mut Vec<i32>
 /// A tuple containing the extracted taxon ID and its corresponding level.
 fn process_kraken_report_line(kraken_report: &str) -> (i32, i32) {
     let fields: Vec<&str> = kraken_report.split('\t').collect();
-    let taxon_id = fields[4].parse::<i32>().unwrap();
+    let taxon_id = fields[4]
+        .parse::<i32>()
+        .expect("Error parsing taxon ID in kraken report");
     let mut spaces = 0;
 
     for char in fields[5].chars() {
         if char == ' ' {
-            spaces = spaces + 1;
+            spaces += 1;
         } else {
             break;
         }
@@ -277,43 +278,41 @@ fn build_tree_from_kraken_report(
         let reader = io::BufReader::new(report_file);
         let mut prev_index = None;
 
-        for line in reader.lines() {
-            if let Ok(line) = line {
-                let (taxon_id, level_num) = process_kraken_report_line(&line);
-                // if taxon_id == 0, it's an unclassified read so we can skip
-                if taxon_id == 0 {
-                    continue;
+        for line in reader.lines().flatten() {
+            let (taxon_id, level_num) = process_kraken_report_line(&line);
+            // if taxon_id == 0, it's an unclassified read so we can skip
+            if taxon_id == 0 {
+                continue;
+            }
+            // 1 will be the root of the tree
+            if taxon_id == 1 {
+                let root_node = Tree::new(taxon_id, level_num, None);
+                prev_index = Some(nodes.len());
+                nodes.push(root_node);
+            }
+            // if the current level is not the same as the previous level + 1, then we are not at the correct parent, and need to move up the tree
+            while let Some(parent_index) = prev_index {
+                if level_num != nodes[parent_index].level_num + 1 {
+                    prev_index = nodes[parent_index].parent;
+                } else {
+                    break;
                 }
-                // 1 will be the root of the tree
-                if taxon_id == 1 {
-                    let root_node = Tree::new(taxon_id, level_num, None);
-                    prev_index = Some(nodes.len());
-                    nodes.push(root_node);
-                }
-                // if the current level is not the same as the previous level + 1, then we are not at the correct parent, and need to move up the tree
-                while let Some(parent_index) = prev_index {
-                    if level_num != nodes[parent_index].level_num + 1 {
-                        prev_index = nodes[parent_index].parent;
-                    } else {
-                        break;
-                    }
-                }
-                // once we have the correct parent, we can add the current node to the tree
-                let curr_node = Tree::new(taxon_id, level_num, prev_index);
-                let curr_index = nodes.len();
-                nodes.push(curr_node);
+            }
+            // once we have the correct parent, we can add the current node to the tree
+            let curr_node = Tree::new(taxon_id, level_num, prev_index);
+            let curr_index = nodes.len();
+            nodes.push(curr_node);
 
-                // add the current node
-                if let Some(parent_index) = prev_index {
-                    nodes[parent_index].children.push(curr_index);
-                }
+            // add the current node
+            if let Some(parent_index) = prev_index {
+                nodes[parent_index].children.push(curr_index);
+            }
 
-                prev_index = Some(curr_index);
+            prev_index = Some(curr_index);
 
-                // if the current taxon is one we want to save, add it to the map
-                if taxon_id == taxon_to_save {
-                    taxon_map.insert(taxon_id, curr_index);
-                }
+            // if the current taxon is one we want to save, add it to the map
+            if taxon_id == taxon_to_save {
+                taxon_map.insert(taxon_id, curr_index);
             }
         }
     }
@@ -388,15 +387,12 @@ fn parse_fastq(
         line_bytes.extend_from_slice(line.as_bytes());
         num_lines += 1;
 
-        match num_lines % 4 {
-            1 => {
-                let fields: Vec<&str> = line.split_whitespace().collect();
-                let read_id = &fields[0][1..];
-                current_id = read_id.to_string();
-                num_reads += 1;
-            }
-            _ => {}
-        };
+        if num_lines % 4 == 1 {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            let read_id = &fields[0][1..];
+            current_id = read_id.to_string();
+            num_reads += 1;
+        }
 
         if reads_to_save.contains_key(&current_id) {
             tx.send(line_bytes.to_vec()).unwrap();
@@ -407,7 +403,7 @@ fn parse_fastq(
 }
 fn main() {
     let args = Args::parse();
-    let compression_mode = match args.compression.as_deref() {
+    let compression_mode = match args.compression_mode.as_deref() {
         Some("fast") => Compression::fast(),
         Some("default") => Compression::default(),
         Some("best") => Compression::best(),
