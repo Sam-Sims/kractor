@@ -374,7 +374,7 @@ fn collect_taxons_to_save(args: &Args) -> Vec<i32> {
 fn parse_fastq(
     in_buf: io::BufReader<Box<dyn Read>>,
     tx: &Sender<Vec<u8>>,
-    reads_to_save: HashMap<String, i32>,
+    reads_to_save: &HashMap<String, i32>,
 ) {
     let mut num_lines = 0;
     let mut num_reads = 0;
@@ -434,13 +434,13 @@ fn main() {
     };
 
     // check if paired-end reads are provided
-    let paired = args.fastq2.is_some();
-    if paired && args.output2.is_none() {
-        panic!("Error: Paired-end reads provided but no output2 file specified");
-    }
-    if args.output2.is_some() && !paired {
-        panic!("Error: output2 file specified but no paired-end reads provided");
-    }
+    // let paired = args.fastq2.is_some();
+    // if paired && args.output2.is_none() {
+    //     panic!("Error: Paired-end reads provided but no output2 file specified");
+    // }
+    // if args.output2.is_some() && !paired {
+    //     panic!("Error: output2 file specified but no paired-end reads provided");
+    // }
 
     println!(">> Step 1: Collecting taxon and read IDs to save");
     let taxon_ids_to_save = collect_taxons_to_save(&args);
@@ -452,6 +452,8 @@ fn main() {
     // Spawn the writer thread
     let (tx, rx) = channel::<Vec<u8>>();
     let writer_thread = spawn_writer(args.output, rx);
+    let (tx2, rx2) = channel::<Vec<u8>>();
+    let writer_thread2 = spawn_writer(args.output2.unwrap(), rx2);
     // let writer_thread = thread::spawn(move || {
     //     let out_file = fs::File::create(args.output).expect("Error creating output file");
     //     let mut out_buf: Box<dyn io::Write> = if args.no_compress {
@@ -473,10 +475,13 @@ fn main() {
     // });
 
     let in_buf = read_fastq(&args.fastq);
-    parse_fastq(in_buf, &tx, reads_to_save);
+    parse_fastq(in_buf, &tx, &reads_to_save);
+    let in_buf2 = read_fastq(&args.fastq2.unwrap());
+    parse_fastq(in_buf2, &tx2, &reads_to_save);
 
     println!("  Processing is done. Writing is in progress...");
     drop(tx);
+    drop(tx2);
     //writer_thread.join().unwrap();
 
     println!("Writing complete.");
