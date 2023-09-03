@@ -1,3 +1,4 @@
 /target
 /test-data
+/benchmarks/raw
 Cargo.lock

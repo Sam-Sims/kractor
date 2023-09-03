@@ -21,23 +21,11 @@ This is currently an early implementation (and my first Rust programme!), with p
 - Extract parents or the children of the specified taxon id
 - Supports both uncompressed or `gzip` inputs.
 - Multithreaded
-- ~ 550% speed up compared to KrakenTools
+- ~4.4x speed up compared to KrakenTools
 
 ### Benchmarks (rough)
 
-Based on 6.1Gb fastq.gz with 5,454,495 reads | 1.8Gb kraken output - 
-
-Time to parse the kraken output, extract all matching reads, and write to new fastq file.
-
-**KrakenTools:**
-| Type | Time       |
-|------|------------|
-| real | 6m 49s |
-
-**kraken-extract:**
-| Type | Time    |
-|------|---------|
-| real | 1m 15s |
+For more detail see [benchmarks](benchmarks/benchmarks.md)
 
 ## Installation
 
@@ -53,9 +41,7 @@ git clone https://github.com/Sam-Sims/krakenxtract
 
 **Install rust/cargo:**
 
-To install please refer to the rust documentation:
-
-[See the docs](https://doc.rust-lang.org/cargo/getting-started/installation.html)
+To install please refer to the rust documentation: [docs](https://doc.rust-lang.org/cargo/getting-started/installation.html)
 
 **Build and add to path:**
 
@@ -81,7 +67,7 @@ kraken-extract --kraken <kraken_output> --fastq <fastq_file> --taxid <taxonomic_
 -r, --report <REPORT_OUTPUT>            
 -f, --fastq <FASTQ_FILE>              
 -o, --output <OUTPUT_LOCATION>            
---compression_mode <COMPRESSION>      [default: fast]         
+--compression-mode <COMPRESSION>      [default: fast]         
 --parents                    
 --children                   
 --no-compress                
