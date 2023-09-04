@@ -53,6 +53,8 @@ struct Args {
     no_compress: bool,
     #[arg(long)]
     exclude: bool,
+    #[arg(long)]
+    output_fasta: bool,
 }
 
 /// Reads a FASTQ file from the specified path and returns a buffered reader.
@@ -371,6 +373,7 @@ fn parse_fastq(
     in_buf: io::BufReader<Box<dyn Read>>,
     tx: &Sender<Vec<u8>>,
     reads_to_save: HashMap<String, i32>,
+    output_fasta: bool,
 ) {
     let mut num_lines = 0;
     let mut num_reads = 0;
@@ -395,7 +398,16 @@ fn parse_fastq(
         }
 
         if reads_to_save.contains_key(&current_id) {
-            tx.send(line_bytes.to_vec()).unwrap();
+            // if we want to outout a fasta, and are on first line of read - the ID
+            if output_fasta && num_lines % 4 == 1 {
+                let fasta_header = format!("> {}", current_id);
+                tx.send(fasta_header.as_bytes().to_vec()).unwrap();
+            // if we want to output a fasta, and are on the second line of the read - the sequence
+            } else if output_fasta && num_lines % 4 == 2 {
+                tx.send(line_bytes.to_vec()).unwrap();
+            } else if !output_fasta {
+                tx.send(line_bytes.to_vec()).unwrap();
+            }
             write!(stdout, "  Processed {} reads\r", num_reads).unwrap();
             //stdout.flush().unwrap();
         }
@@ -442,7 +454,7 @@ fn main() {
     });
 
     let in_buf = read_fastq(&args.fastq);
-    parse_fastq(in_buf, &tx, reads_to_save);
+    parse_fastq(in_buf, &tx, reads_to_save, args.output_fasta);
 
     println!("  Processing is done. Writing is in progress...");
     drop(tx);
