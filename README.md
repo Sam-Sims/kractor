@@ -2,6 +2,8 @@
 
 [![Release](https://github.com/Sam-Sims/krakenXtract/actions/workflows/release.yaml/badge.svg)](https://github.com/Sam-Sims/krakenXtract/actions/workflows/release.yaml)
 ![GitHub release (with filter)](https://img.shields.io/github/v/release/sam-sims/krakenxtract)
+![crates.io](https://img.shields.io/crates/v/krakenxtract
+)
 
 
 Extract reads from a FASTQ file based on taxonomic classification via Kraken2.
