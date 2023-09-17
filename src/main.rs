@@ -383,10 +383,10 @@ fn parse_fastq(
     let mut num_lines = 0;
     let mut num_reads = 0;
     let mut current_id: String = String::new();
-    let mut stdout = BufWriter::new(io::stdout().lock());
+    //let mut stdout = BufWriter::new(io::stdout().lock());
     let mut line_bytes = Vec::new();
     let mut last_progress_update = Instant::now(); // For throttling progress updates
-    const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_secs(1);
+    const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_millis(1000);
 
     println!("  Reading fastq:");
 
@@ -415,20 +415,29 @@ fn parse_fastq(
     }
 }
 
-// fn spawn_writer(output_file: String, rx: Receiver<Vec<u8>>) {
-//     thread::spawn(move || {
-//         let out_file = fs::File::create(output_file).expect("Error creating output file");
-//         let mut out_buf: Box<dyn io::Write> = Box::new(io::BufWriter::new(out_file));
+fn write_output_file(
+    out_file: fs::File,
+    rx: Receiver<Vec<u8>>,
+    compression_mode: Compression,
+    no_compress: bool,
+) {
+    let mut out_buf: Box<dyn io::Write> = if no_compress {
+        Box::new(io::BufWriter::new(out_file))
+    } else {
+        Box::new(io::BufWriter::new(GzEncoder::new(
+            out_file,
+            compression_mode,
+        )))
+    };
 
-//         for data in rx {
-//             out_buf
-//                 .write_all(&data)
-//                 .and_then(|_| out_buf.write_all(b"\n"))
-//                 .expect("Error writing to output file");
-//         }
-//         out_buf.flush().expect("Error flushing output buffer");
-//     });
-// }
+    for data in rx {
+        out_buf
+            .write_all(&data)
+            .and_then(|_| out_buf.write_all(b"\n"))
+            .expect("Error writing to output file");
+    }
+    out_buf.flush().expect("Error flushing output buffer");
+}
 
 fn main() {
     let args = Args::parse();
@@ -463,22 +472,7 @@ fn main() {
         let (tx, rx) = channel::<Vec<u8>>();
         let writer_thread = thread::spawn(move || {
             let out_file = fs::File::create(args.output).expect("Error creating output file");
-            let mut out_buf: Box<dyn io::Write> = if args.no_compress {
-                Box::new(io::BufWriter::new(out_file))
-            } else {
-                Box::new(io::BufWriter::new(GzEncoder::new(
-                    out_file,
-                    compression_mode,
-                )))
-            };
-
-            for data in rx {
-                out_buf
-                    .write_all(&data)
-                    .and_then(|_| out_buf.write_all(b"\n"))
-                    .expect("Error writing to output file");
-            }
-            out_buf.flush().expect("Error flushing output buffer");
+            write_output_file(out_file, rx, compression_mode, args.no_compress);
         });
         let in_buf = read_fastq(&args.fastq);
         parse_fastq(in_buf, &tx, reads_to_save_arc);
@@ -496,54 +490,25 @@ fn main() {
         let tx2_clone = tx2.clone();
         let writer_thread1 = thread::spawn(move || {
             let out_file = fs::File::create(args.output).expect("Error creating output file");
-            let mut out_buf: Box<dyn io::Write> = if args.no_compress {
-                Box::new(io::BufWriter::new(out_file))
-            } else {
-                Box::new(io::BufWriter::new(GzEncoder::new(
-                    out_file,
-                    compression_mode,
-                )))
-            };
-
-            for data in rx1 {
-                out_buf
-                    .write_all(&data)
-                    .and_then(|_| out_buf.write_all(b"\n"))
-                    .expect("Error writing to output file");
-            }
-            out_buf.flush().expect("Error flushing output buffer");
+            write_output_file(out_file, rx1, compression_mode, args.no_compress);
         });
+
         let writer_thread2 = thread::spawn(move || {
             let out_file =
                 fs::File::create(args.output2.unwrap()).expect("Error creating output file");
-            let mut out_buf: Box<dyn io::Write> = if args.no_compress {
-                Box::new(io::BufWriter::new(out_file))
-            } else {
-                Box::new(io::BufWriter::new(GzEncoder::new(
-                    out_file,
-                    compression_mode,
-                )))
-            };
-
-            for data in rx2 {
-                out_buf
-                    .write_all(&data)
-                    .and_then(|_| out_buf.write_all(b"\n"))
-                    .expect("Error writing to output file");
-            }
-            out_buf.flush().expect("Error flushing output buffer");
+            write_output_file(out_file, rx2, compression_mode, args.no_compress);
         });
         let in_buf1 = read_fastq(&args.fastq);
         let in_buf2 = read_fastq(&args.fastq2.unwrap());
         let reader_thread1 = thread::spawn({
-            let reads_to_save_arc = reads_to_save_arc.clone(); // Clone reads_to_save_arc here
+            let reads_to_save_arc = reads_to_save_arc.clone();
             move || {
                 parse_fastq(in_buf1, &tx1_clone, reads_to_save_arc);
             }
         });
 
         let reader_thread2 = thread::spawn({
-            let reads_to_save_arc = reads_to_save_arc.clone(); // Clone reads_to_save_arc here
+            let reads_to_save_arc = reads_to_save_arc.clone();
             move || {
                 parse_fastq(in_buf2, &tx2_clone, reads_to_save_arc);
             }
