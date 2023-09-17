@@ -3,9 +3,13 @@ use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use std::{
     collections::HashMap,
     fs::{self},
-    io::{self, prelude::*, BufWriter},
-    sync::mpsc::{channel, Receiver, Sender},
+    io::{self, prelude::*, BufReader, BufWriter},
+    sync::{
+        mpsc::{channel, Receiver, Sender},
+        Arc,
+    },
     thread,
+    time::{Duration, Instant},
 };
 
 #[derive(Debug, Clone)]
@@ -72,7 +76,7 @@ struct Args {
 ///
 /// A buffered reader containing the contents of the FASTQ file. The reader may be a
 /// plain text reader or a gzip decompressor, depending on the file format.
-fn read_fastq(path: &str) -> io::BufReader<Box<dyn io::Read>> {
+fn read_fastq(path: &str) -> BufReader<Box<dyn io::Read + Send + 'static>> {
     // The gzip magic number is 0x1f8b
     const GZIP_MAGIC_NUMBER: [u8; 2] = [0x1f, 0x8b];
 
@@ -91,10 +95,10 @@ fn read_fastq(path: &str) -> io::BufReader<Box<dyn io::Read>> {
         // check if the first two bytes match the gzip magic number => file is gzipped
         // otherwise, it's a plain text file
         if size == 2 && buffer == GZIP_MAGIC_NUMBER {
-            let gzip_reader: Box<dyn io::Read> = Box::new(GzDecoder::new(file));
+            let gzip_reader: Box<dyn io::Read + Send> = Box::new(GzDecoder::new(file));
             io::BufReader::new(gzip_reader)
         } else {
-            let plain_reader: Box<dyn io::Read> = Box::new(file);
+            let plain_reader: Box<dyn io::Read + Send> = Box::new(file);
             io::BufReader::new(plain_reader)
         }
     } else {
@@ -372,22 +376,23 @@ fn collect_taxons_to_save(args: &Args) -> Vec<i32> {
 /// * `tx` - A channel sender for sending sequences of selected reads.
 /// * `reads_to_save` - A HashMap containing read IDs and corresponding taxon IDs.
 fn parse_fastq(
-    in_buf: io::BufReader<Box<dyn Read>>,
+    in_buf: io::BufReader<Box<dyn Read + Send>>,
     tx: &Sender<Vec<u8>>,
-    reads_to_save: &HashMap<String, i32>,
+    reads_to_save: Arc<HashMap<String, i32>>,
 ) {
     let mut num_lines = 0;
     let mut num_reads = 0;
     let mut current_id: String = String::new();
     let mut stdout = BufWriter::new(io::stdout().lock());
     let mut line_bytes = Vec::new();
+    let mut last_progress_update = Instant::now(); // For throttling progress updates
+    const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_secs(1);
 
     println!("  Reading fastq:");
 
     for line in in_buf.lines() {
         let line = line.expect("Error reading fastq line");
         line_bytes.clear();
-        //let line_bytes = line.as_bytes();
         line_bytes.extend_from_slice(line.as_bytes());
         num_lines += 1;
 
@@ -400,26 +405,30 @@ fn parse_fastq(
 
         if reads_to_save.contains_key(&current_id) {
             tx.send(line_bytes.to_vec()).unwrap();
-            write!(stdout, "  Processed {} reads\r", num_reads).unwrap();
-            //stdout.flush().unwrap();
+        }
+        // Throttle progress updates - need to fix for multi-threading
+        if last_progress_update.elapsed() >= PROGRESS_UPDATE_INTERVAL {
+            print!("\rProcessed {} reads", num_reads);
+            last_progress_update = Instant::now();
+            io::stdout().flush().unwrap();
         }
     }
 }
 
-fn spawn_writer(output_file: String, rx: Receiver<Vec<u8>>) {
-    thread::spawn(move || {
-        let out_file = fs::File::create(output_file).expect("Error creating output file");
-        let mut out_buf: Box<dyn io::Write> = Box::new(io::BufWriter::new(out_file));
+// fn spawn_writer(output_file: String, rx: Receiver<Vec<u8>>) {
+//     thread::spawn(move || {
+//         let out_file = fs::File::create(output_file).expect("Error creating output file");
+//         let mut out_buf: Box<dyn io::Write> = Box::new(io::BufWriter::new(out_file));
 
-        for data in rx {
-            out_buf
-                .write_all(&data)
-                .and_then(|_| out_buf.write_all(b"\n"))
-                .expect("Error writing to output file");
-        }
-        out_buf.flush().expect("Error flushing output buffer");
-    });
-}
+//         for data in rx {
+//             out_buf
+//                 .write_all(&data)
+//                 .and_then(|_| out_buf.write_all(b"\n"))
+//                 .expect("Error writing to output file");
+//         }
+//         out_buf.flush().expect("Error flushing output buffer");
+//     });
+// }
 
 fn main() {
     let args = Args::parse();
@@ -446,47 +455,106 @@ fn main() {
     let taxon_ids_to_save = collect_taxons_to_save(&args);
     io::stdout().flush().unwrap();
     let reads_to_save = process_kraken_output(args.kraken, args.exclude, taxon_ids_to_save);
+    let reads_to_save_arc: Arc<HashMap<String, i32>> = Arc::new(reads_to_save);
 
     println!(">> Step 2: Extracting reads to save and creating output");
+    if !paired {
+        // Spawn the writer thread
+        let (tx, rx) = channel::<Vec<u8>>();
+        let writer_thread = thread::spawn(move || {
+            let out_file = fs::File::create(args.output).expect("Error creating output file");
+            let mut out_buf: Box<dyn io::Write> = if args.no_compress {
+                Box::new(io::BufWriter::new(out_file))
+            } else {
+                Box::new(io::BufWriter::new(GzEncoder::new(
+                    out_file,
+                    compression_mode,
+                )))
+            };
 
-    // Spawn the writer thread
-    let (tx, rx) = channel::<Vec<u8>>();
-    let writer_thread = spawn_writer(args.output, rx);
+            for data in rx {
+                out_buf
+                    .write_all(&data)
+                    .and_then(|_| out_buf.write_all(b"\n"))
+                    .expect("Error writing to output file");
+            }
+            out_buf.flush().expect("Error flushing output buffer");
+        });
+        let in_buf = read_fastq(&args.fastq);
+        parse_fastq(in_buf, &tx, reads_to_save_arc);
 
-    // let writer_thread = thread::spawn(move || {
-    //     let out_file = fs::File::create(args.output).expect("Error creating output file");
-    //     let mut out_buf: Box<dyn io::Write> = if args.no_compress {
-    //         Box::new(io::BufWriter::new(out_file))
-    //     } else {
-    //         Box::new(io::BufWriter::new(GzEncoder::new(
-    //             out_file,
-    //             compression_mode,
-    //         )))
-    //     };
+        println!("  Processing is done. Writing is in progress...");
+        drop(tx);
 
-    //     for data in rx {
-    //         out_buf
-    //             .write_all(&data)
-    //             .and_then(|_| out_buf.write_all(b"\n"))
-    //             .expect("Error writing to output file");
-    //     }
-    //     out_buf.flush().expect("Error flushing output buffer");
-    // });
+        writer_thread.join().unwrap();
+    } else {
+        //we are paired end and so we need to spawn two writer threads and two reader threads
 
-    let in_buf = read_fastq(&args.fastq);
-    parse_fastq(in_buf, &tx, &reads_to_save);
-    if paired {
+        let (tx1, rx1) = channel::<Vec<u8>>();
         let (tx2, rx2) = channel::<Vec<u8>>();
-        let writer_thread2 = spawn_writer(args.output2.unwrap(), rx2);
+        let tx1_clone = tx1.clone();
+        let tx2_clone = tx2.clone();
+        let writer_thread1 = thread::spawn(move || {
+            let out_file = fs::File::create(args.output).expect("Error creating output file");
+            let mut out_buf: Box<dyn io::Write> = if args.no_compress {
+                Box::new(io::BufWriter::new(out_file))
+            } else {
+                Box::new(io::BufWriter::new(GzEncoder::new(
+                    out_file,
+                    compression_mode,
+                )))
+            };
+
+            for data in rx1 {
+                out_buf
+                    .write_all(&data)
+                    .and_then(|_| out_buf.write_all(b"\n"))
+                    .expect("Error writing to output file");
+            }
+            out_buf.flush().expect("Error flushing output buffer");
+        });
+        let writer_thread2 = thread::spawn(move || {
+            let out_file =
+                fs::File::create(args.output2.unwrap()).expect("Error creating output file");
+            let mut out_buf: Box<dyn io::Write> = if args.no_compress {
+                Box::new(io::BufWriter::new(out_file))
+            } else {
+                Box::new(io::BufWriter::new(GzEncoder::new(
+                    out_file,
+                    compression_mode,
+                )))
+            };
+
+            for data in rx2 {
+                out_buf
+                    .write_all(&data)
+                    .and_then(|_| out_buf.write_all(b"\n"))
+                    .expect("Error writing to output file");
+            }
+            out_buf.flush().expect("Error flushing output buffer");
+        });
+        let in_buf1 = read_fastq(&args.fastq);
         let in_buf2 = read_fastq(&args.fastq2.unwrap());
-        parse_fastq(in_buf2, &tx2, &reads_to_save);
+        let reader_thread1 = thread::spawn({
+            let reads_to_save_arc = reads_to_save_arc.clone(); // Clone reads_to_save_arc here
+            move || {
+                parse_fastq(in_buf1, &tx1_clone, reads_to_save_arc);
+            }
+        });
+
+        let reader_thread2 = thread::spawn({
+            let reads_to_save_arc = reads_to_save_arc.clone(); // Clone reads_to_save_arc here
+            move || {
+                parse_fastq(in_buf2, &tx2_clone, reads_to_save_arc);
+            }
+        });
+        drop(tx1);
         drop(tx2);
+        writer_thread1.join().unwrap();
+        writer_thread2.join().unwrap();
+        reader_thread1.join().unwrap();
+        reader_thread2.join().unwrap();
     }
-
-    println!("  Processing is done. Writing is in progress...");
-    drop(tx);
-
-    //writer_thread.join().unwrap();
 
     println!("Writing complete.");
 }
