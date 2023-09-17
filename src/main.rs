@@ -4,13 +4,12 @@ use std::{
     collections::HashMap,
     fs::{self},
     io::{self, prelude::*, BufReader, BufWriter},
-    sync::{
-        mpsc::{channel, Receiver, Sender},
-        Arc,
-    },
+    sync::Arc,
     thread,
     time::{Duration, Instant},
 };
+
+use crossbeam::channel::{Sender, Receiver, unbounded};
 
 #[derive(Debug, Clone)]
 struct Tree {
@@ -469,25 +468,27 @@ fn main() {
     println!(">> Step 2: Extracting reads to save and creating output");
     if !paired {
         // Spawn the writer thread
-        let (tx, rx) = channel::<Vec<u8>>();
+        let (tx, rx) = unbounded::<Vec<u8>>();
         let writer_thread = thread::spawn(move || {
             let out_file = fs::File::create(args.output).expect("Error creating output file");
             write_output_file(out_file, rx, compression_mode, args.no_compress);
         });
         let in_buf = read_fastq(&args.fastq);
-        parse_fastq(in_buf, &tx, reads_to_save_arc);
-
+        let reader_thread = thread::spawn({
+            let reads_to_save_arc = reads_to_save_arc.clone();
+            move || {
+                parse_fastq(in_buf, &tx, reads_to_save_arc);
+            }
+        });
         println!("  Processing is done. Writing is in progress...");
-        drop(tx);
-
         writer_thread.join().unwrap();
+        
     } else {
         //we are paired end and so we need to spawn two writer threads and two reader threads
 
-        let (tx1, rx1) = channel::<Vec<u8>>();
-        let (tx2, rx2) = channel::<Vec<u8>>();
-        let tx1_clone = tx1.clone();
-        let tx2_clone = tx2.clone();
+        let (tx1, rx1) = unbounded::<Vec<u8>>();
+        let (tx2, rx2) = unbounded::<Vec<u8>>();
+
         let writer_thread1 = thread::spawn(move || {
             let out_file = fs::File::create(args.output).expect("Error creating output file");
             write_output_file(out_file, rx1, compression_mode, args.no_compress);
@@ -498,23 +499,23 @@ fn main() {
                 fs::File::create(args.output2.unwrap()).expect("Error creating output file");
             write_output_file(out_file, rx2, compression_mode, args.no_compress);
         });
+
         let in_buf1 = read_fastq(&args.fastq);
         let in_buf2 = read_fastq(&args.fastq2.unwrap());
+
         let reader_thread1 = thread::spawn({
             let reads_to_save_arc = reads_to_save_arc.clone();
             move || {
-                parse_fastq(in_buf1, &tx1_clone, reads_to_save_arc);
+                parse_fastq(in_buf1, &tx1, reads_to_save_arc);
             }
         });
-
         let reader_thread2 = thread::spawn({
             let reads_to_save_arc = reads_to_save_arc.clone();
             move || {
-                parse_fastq(in_buf2, &tx2_clone, reads_to_save_arc);
+                parse_fastq(in_buf2, &tx2, reads_to_save_arc);
             }
         });
-        drop(tx1);
-        drop(tx2);
+
         writer_thread1.join().unwrap();
         writer_thread2.join().unwrap();
         reader_thread1.join().unwrap();
