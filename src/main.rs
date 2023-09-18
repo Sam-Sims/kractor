@@ -544,6 +544,7 @@ fn main() {
 
     //init args
     let args = Cli::parse();
+    args.validate_input();
 
     //check if paired-end reads are provided
     let paired = args.input.len() == 2;
