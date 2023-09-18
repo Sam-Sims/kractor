@@ -34,22 +34,15 @@ impl Tree {
     }
 }
 
+//TODO reimplement this - perhaps switch to niffler?
 struct OutputConfig {
     no_compress: bool,
     compression_mode: Compression,
-    output1: String,
-    output2: Option<String>,
     output_fasta: bool,
 }
 
 impl OutputConfig {
-    fn new(
-        no_compress: bool,
-        compression_mode: Option<String>,
-        output1: String,
-        output2: Option<String>,
-        output_fasta: bool,
-    ) -> Self {
+    fn new(no_compress: bool, compression_mode: Option<String>, output_fasta: bool) -> Self {
         //detect compression mode
         let compression_mode = match compression_mode.as_deref() {
             //TODO change compression mode to level(1-9) if specified
@@ -64,8 +57,6 @@ impl OutputConfig {
         OutputConfig {
             no_compress,
             compression_mode,
-            output1,
-            output2,
             output_fasta,
         }
     }
@@ -168,7 +159,7 @@ fn process_kraken_output(
     let reader = io::BufReader::new(kraken_file);
     let mut total_reads = 0;
 
-    info!("Processing kraken output");
+    info!("Processing kraken output...");
     io::stdout().flush().unwrap();
     for line_result in reader.lines() {
         let line = line_result.expect("Error reading kraken output line");
@@ -366,7 +357,7 @@ fn build_tree_from_kraken_report(
 fn collect_taxons_to_save(args: &Cli) -> Vec<i32> {
     let mut taxon_ids_to_save = Vec::new();
     if args.report.is_some() {
-        info!("Processing kraken report");
+        info!("Processing kraken report...");
         let report_path = args.report.clone().unwrap();
         let (nodes, taxon_map) = build_tree_from_kraken_report(args.taxid, report_path);
         if args.children {
@@ -471,20 +462,12 @@ fn write_output_file(
 
 fn process_single_end(
     output_config: OutputConfig,
-    reads_to_save_arc: Arc<HashMap<String, i32>>,
+    reads_to_save: Arc<HashMap<String, i32>>,
     in_buf: io::BufReader<Box<dyn Read + Send>>,
+    out_file: fs::File,
 ) {
     let (tx, rx) = channel::unbounded::<Vec<u8>>();
     let writer_thread = thread::spawn(move || {
-        //let out_file = fs::File::create(output_config.output1).expect("Error creating output file");
-        let out_file = match fs::File::create(output_config.output1) {
-            Ok(out_file) => out_file,
-            Err(_) => {
-                error!("Error opening output file for writing");
-                std::process::exit(1);
-            }
-        };
-
         write_output_file(
             out_file,
             rx,
@@ -494,7 +477,7 @@ fn process_single_end(
         );
     });
     let reader_thread = thread::spawn({
-        let reads_to_save_arc = reads_to_save_arc.clone();
+        let reads_to_save_arc = reads_to_save.clone();
         move || {
             parse_fastq(in_buf, &tx, reads_to_save_arc, output_config.output_fasta);
         }
@@ -507,23 +490,18 @@ fn process_single_end(
 
 fn process_paired_end(
     output_config: OutputConfig,
-    reads_to_save_arc: Arc<HashMap<String, i32>>,
+    reads_to_save: Arc<HashMap<String, i32>>,
     in_buf1: io::BufReader<Box<dyn Read + Send>>,
     in_buf2: io::BufReader<Box<dyn Read + Send>>,
+    out_file1: fs::File,
+    out_file2: fs::File,
 ) {
     let (tx1, rx1) = channel::unbounded::<Vec<u8>>();
     let (tx2, rx2) = channel::unbounded::<Vec<u8>>();
 
     let writer_thread1 = thread::spawn(move || {
-        let out_file = match fs::File::create(output_config.output1) {
-            Ok(out_file) => out_file,
-            Err(_) => {
-                error!("Error opening output1 file for writing");
-                std::process::exit(1);
-            }
-        };
         write_output_file(
-            out_file,
+            out_file1,
             rx1,
             output_config.compression_mode,
             output_config.no_compress,
@@ -532,15 +510,8 @@ fn process_paired_end(
     });
 
     let writer_thread2 = thread::spawn(move || {
-        let out_file = match fs::File::create(output_config.output2.unwrap()) {
-            Ok(out_file) => out_file,
-            Err(_) => {
-                error!("Error opening output2 file for writing");
-                std::process::exit(1);
-            }
-        };
         write_output_file(
-            out_file,
+            out_file2,
             rx2,
             output_config.compression_mode,
             output_config.no_compress,
@@ -548,13 +519,13 @@ fn process_paired_end(
         );
     });
     let reader_thread1 = thread::spawn({
-        let reads_to_save_arc = reads_to_save_arc.clone();
+        let reads_to_save_arc = reads_to_save.clone();
         move || {
             parse_fastq(in_buf1, &tx1, reads_to_save_arc, output_config.output_fasta);
         }
     });
     let reader_thread2 = thread::spawn({
-        let reads_to_save_arc = reads_to_save_arc.clone();
+        let reads_to_save_arc = reads_to_save.clone();
         move || {
             parse_fastq(in_buf2, &tx2, reads_to_save_arc, output_config.output_fasta);
         }
@@ -598,25 +569,46 @@ fn main() {
     let reads_to_save = process_kraken_output(args.kraken, args.exclude, taxon_ids_to_save);
 
     //create output from struct
-    let output_config = OutputConfig::new(
-        args.no_compress,
-        args.compression_mode,
-        args.output,
-        args.output2,
-        args.output_fasta,
-    );
+    let output_config =
+        OutputConfig::new(args.no_compress, args.compression_mode, args.output_fasta);
 
     //println!(">> Step 2: Extracting reads to save and creating output");
     info!("Processing reads...");
     if !paired {
-        // we are single end
+        let out_file = match fs::File::create(&args.output[0]) {
+            Ok(out_file) => out_file,
+            Err(_) => {
+                error!("Error opening output1 file for writing");
+                std::process::exit(1);
+            }
+        };
         let in_buf1 = read_fastq(&args.input[0]);
-        process_single_end(output_config, reads_to_save.clone(), in_buf1);
+        process_single_end(output_config, reads_to_save.clone(), in_buf1, out_file);
     } else {
-        //we are paired end and so we need to spawn two writer threads and two reader threads
-        //info!("Processing paired-end reads");
         let in_buf1 = read_fastq(&args.input[0]);
         let in_buf2 = read_fastq(&args.input[1]);
-        process_paired_end(output_config, reads_to_save.clone(), in_buf1, in_buf2);
+
+        let out_file1 = match fs::File::create(&args.output[0]) {
+            Ok(out_file1) => out_file1,
+            Err(_) => {
+                error!("Error opening output2 file for writing");
+                std::process::exit(1);
+            }
+        };
+        let out_file2 = match fs::File::create(&args.output[1]) {
+            Ok(out_file2) => out_file2,
+            Err(_) => {
+                error!("Error opening output2 file for writing");
+                std::process::exit(1);
+            }
+        };
+        process_paired_end(
+            output_config,
+            reads_to_save.clone(),
+            in_buf1,
+            in_buf2,
+            out_file1,
+            out_file2,
+        );
     }
 }

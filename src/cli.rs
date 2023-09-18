@@ -15,11 +15,8 @@ pub struct Cli {
     pub taxid: i32,
     #[arg(short, long)]
     pub report: Option<String>,
-    #[arg(long)]
-    #[arg(long)]
-    pub output: String,
-    #[arg(long)]
-    pub output2: Option<String>,
+    #[arg(short = 'o', long = "output", num_args(0..=2), required = true)]
+    pub output: Vec<String>,
     #[arg(long, default_value = "fast")]
     pub compression_mode: Option<String>,
     #[arg(long, action)]
@@ -32,4 +29,10 @@ pub struct Cli {
     pub exclude: bool,
     #[arg(long)]
     pub output_fasta: bool,
+}
+
+impl Cli {
+    pub fn validate_input(&self) {
+        let in_count = self.input.len();
+    }
 }
