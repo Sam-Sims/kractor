@@ -443,6 +443,7 @@ fn parse_fastq(
         }
 
         if reads_to_save.contains_key(&current_id) {
+            //TODO - probably dont want to output a gz if fasta
             // if we want to outout a fasta, and are on first line of read - the ID
             if output_fasta && num_lines % 4 == 1 {
                 let fasta_header = format!("> {}", current_id);
@@ -468,8 +469,9 @@ fn write_output_file(
     rx: Receiver<Vec<u8>>,
     compression_mode: Compression,
     no_compress: bool,
+    output_fasta: bool,
 ) {
-    let mut out_buf: Box<dyn io::Write> = if no_compress {
+    let mut out_buf: Box<dyn io::Write> = if no_compress || output_fasta {
         Box::new(io::BufWriter::new(out_file))
     } else {
         Box::new(io::BufWriter::new(GzEncoder::new(
@@ -500,6 +502,7 @@ fn process_single_end(
             rx,
             output_config.compression_mode,
             output_config.no_compress,
+            output_config.output_fasta,
         );
     });
     let reader_thread = thread::spawn({
@@ -529,6 +532,7 @@ fn process_paired_end(
             rx1,
             output_config.compression_mode,
             output_config.no_compress,
+            output_config.output_fasta,
         );
     });
 
@@ -540,6 +544,7 @@ fn process_paired_end(
             rx2,
             output_config.compression_mode,
             output_config.no_compress,
+            output_config.output_fasta,
         );
     });
     let reader_thread1 = thread::spawn({
@@ -576,7 +581,6 @@ fn main() {
     let taxon_ids_to_save = collect_taxons_to_save(&args);
     io::stdout().flush().unwrap();
     let reads_to_save = process_kraken_output(args.kraken, args.exclude, taxon_ids_to_save);
-    //let reads_to_save_arc: Arc<HashMap<String, i32>> = Arc::new(reads_to_save);
 
     //create output from struct
     let output_config = OutputConfig::new(
