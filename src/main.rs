@@ -59,6 +59,8 @@ struct Args {
     no_compress: bool,
     #[arg(long)]
     exclude: bool,
+    #[arg(long)]
+    output_fasta: bool,
 }
 
 struct OutputConfig {
@@ -66,6 +68,7 @@ struct OutputConfig {
     compression_mode: Compression,
     output1: String,
     output2: Option<String>,
+    output_fasta: bool,
 }
 
 impl OutputConfig {
@@ -74,6 +77,7 @@ impl OutputConfig {
         compression_mode: Option<String>,
         output1: String,
         output2: Option<String>,
+        output_fasta: bool,
     ) -> Self {
         //detect compression mode
         let compression_mode = match compression_mode.as_deref() {
@@ -91,6 +95,7 @@ impl OutputConfig {
             compression_mode,
             output1,
             output2,
+            output_fasta,
         }
     }
 }
@@ -412,6 +417,7 @@ fn parse_fastq(
     in_buf: io::BufReader<Box<dyn Read + Send>>,
     tx: &Sender<Vec<u8>>,
     reads_to_save: Arc<HashMap<String, i32>>,
+    output_fasta: bool,
 ) {
     let mut num_lines = 0;
     let mut num_reads = 0;
@@ -437,7 +443,16 @@ fn parse_fastq(
         }
 
         if reads_to_save.contains_key(&current_id) {
-            tx.send(line_bytes.to_vec()).unwrap();
+            // if we want to outout a fasta, and are on first line of read - the ID
+            if output_fasta && num_lines % 4 == 1 {
+                let fasta_header = format!("> {}", current_id);
+                tx.send(fasta_header.as_bytes().to_vec()).unwrap();
+            // if we want to output a fasta, and are on the second line of the read - the sequence
+            } else if output_fasta && num_lines % 4 == 2 {
+                tx.send(line_bytes.to_vec()).unwrap();
+            } else if !output_fasta {
+                tx.send(line_bytes.to_vec()).unwrap();
+            }
         }
         // Throttle progress updates - need to fix for multi-threading
         if last_progress_update.elapsed() >= PROGRESS_UPDATE_INTERVAL {
@@ -490,7 +505,7 @@ fn process_single_end(
     let reader_thread = thread::spawn({
         let reads_to_save_arc = reads_to_save_arc.clone();
         move || {
-            parse_fastq(in_buf, &tx, reads_to_save_arc);
+            parse_fastq(in_buf, &tx, reads_to_save_arc, output_config.output_fasta);
         }
     });
     println!("  Processing is done. Writing is in progress...");
@@ -530,13 +545,13 @@ fn process_paired_end(
     let reader_thread1 = thread::spawn({
         let reads_to_save_arc = reads_to_save_arc.clone();
         move || {
-            parse_fastq(in_buf1, &tx1, reads_to_save_arc);
+            parse_fastq(in_buf1, &tx1, reads_to_save_arc, output_config.output_fasta);
         }
     });
     let reader_thread2 = thread::spawn({
         let reads_to_save_arc = reads_to_save_arc.clone();
         move || {
-            parse_fastq(in_buf2, &tx2, reads_to_save_arc);
+            parse_fastq(in_buf2, &tx2, reads_to_save_arc, output_config.output_fasta);
         }
     });
 
@@ -569,6 +584,7 @@ fn main() {
         args.compression_mode,
         args.output,
         args.output2,
+        args.output_fasta,
     );
 
     println!(">> Step 2: Extracting reads to save and creating output");
