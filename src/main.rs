@@ -77,6 +77,7 @@ impl OutputConfig {
     ) -> Self {
         //detect compression mode
         let compression_mode = match compression_mode.as_deref() {
+            // change compression mode to level(1-9) if specified
             Some("fast") => Compression::fast(),
             Some("default") => Compression::default(),
             Some("best") => Compression::best(),
@@ -174,7 +175,7 @@ fn process_kraken_output(
     kraken_path: String,
     exclude: bool,
     taxon_ids_to_save: Vec<i32>,
-) -> HashMap<String, i32> {
+) -> Arc<HashMap<String, i32>> {
     let mut reads_to_save = HashMap::new();
     let kraken_file = fs::File::open(kraken_path).expect("Error reading kraken output file");
     let reader = io::BufReader::new(kraken_file);
@@ -201,6 +202,7 @@ fn process_kraken_output(
         total_reads,
         reads_to_save.len()
     );
+    let reads_to_save: Arc<HashMap<String, i32>> = Arc::new(reads_to_save);
     reads_to_save
 }
 
@@ -559,7 +561,7 @@ fn main() {
     let taxon_ids_to_save = collect_taxons_to_save(&args);
     io::stdout().flush().unwrap();
     let reads_to_save = process_kraken_output(args.kraken, args.exclude, taxon_ids_to_save);
-    let reads_to_save_arc: Arc<HashMap<String, i32>> = Arc::new(reads_to_save);
+    //let reads_to_save_arc: Arc<HashMap<String, i32>> = Arc::new(reads_to_save);
 
     //create output from struct
     let output_config = OutputConfig::new(
@@ -573,12 +575,12 @@ fn main() {
     if !paired {
         // we are single end
         let in_buf = read_fastq(&args.fastq);
-        process_single_end(output_config, reads_to_save_arc.clone(), in_buf);
+        process_single_end(output_config, reads_to_save.clone(), in_buf);
     } else {
         //we are paired end and so we need to spawn two writer threads and two reader threads
         let in_buf1 = read_fastq(&args.fastq);
         let in_buf2 = read_fastq(&args.fastq2.unwrap());
-        process_paired_end(output_config, reads_to_save_arc.clone(), in_buf1, in_buf2);
+        process_paired_end(output_config, reads_to_save.clone(), in_buf1, in_buf2);
     }
 
     println!("Writing complete.");
