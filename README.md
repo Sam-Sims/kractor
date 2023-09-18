@@ -13,7 +13,7 @@ Written in Rust.
 
 Heavily inspired by the great [KrakenTools](https://github.com/jenniferlu717/KrakenTools). 
 
-Having been wanting to experiment with Rust for a while, this is essentially an implementation of the `extract_kraken_reads.py` script, [re-written](https://www.reddit.com/media?url=https%3A%2F%2Fi.redd.it%2Fgood-for-you-crab-v0-5v9ygeh9r1c91.jpg%3Fs%3Dd759db5275e32c6e2bd5c22bddbd783acca46247) in Rust. The main motivation was to provide a speedup when extracting a large number of reads from large FASTQ files - and to learn Rust!
+Having been wanting to experiment with Rust for a while, this is essentially an implementation of the `extract_kraken_reads.py` script, [re-implemented](https://www.reddit.com/media?url=https%3A%2F%2Fi.redd.it%2Fgood-for-you-crab-v0-5v9ygeh9r1c91.jpg%3Fs%3Dd759db5275e32c6e2bd5c22bddbd783acca46247) in Rust. The main motivation was to provide a speedup when extracting a large number of reads from large FASTQ files - and to learn Rust!
 
 This is currently an early implementation, with plans to expand functionality.
 
