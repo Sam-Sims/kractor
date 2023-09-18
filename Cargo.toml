@@ -16,6 +16,8 @@ documentation = "https://docs.rs/crate/krakenxtract/"
 [dependencies]
 clap = { version = "4.3.19", features = ["derive"] }
 crossbeam = "0.8.2"
+env_logger = "0.10.0"
 flate2 = {version = "1.0.26", default-features = false, features = ["zlib-ng"]}
+log = "0.4.20"
 
 

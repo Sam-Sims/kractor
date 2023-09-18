@@ -1,6 +1,9 @@
+pub use crate::cli::Cli;
 use clap::Parser;
 use crossbeam::channel::{self, Receiver, Sender};
+use env_logger::Env;
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
+use log::{debug, error, info, trace, warn};
 use std::{
     collections::HashMap,
     fs::{self},
@@ -9,6 +12,8 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+
+mod cli;
 
 #[derive(Debug, Clone)]
 struct Tree {
@@ -29,40 +34,6 @@ impl Tree {
     }
 }
 
-#[derive(Parser, Debug)]
-#[command(
-    version,
-    about = "Extract reads from a FASTQ file based on taxonomic classification via Kraken2."
-)]
-struct Args {
-    #[arg(short, long)]
-    kraken: String,
-    #[arg(short, long)]
-    taxid: i32,
-    #[arg(short, long)]
-    report: Option<String>,
-    #[arg(long)]
-    fastq: String,
-    #[arg(long)]
-    fastq2: Option<String>,
-    #[arg(long)]
-    output: String,
-    #[arg(long)]
-    output2: Option<String>,
-    #[arg(long, default_value = "fast")]
-    compression_mode: Option<String>,
-    #[arg(long, action)]
-    parents: bool,
-    #[arg(long, action)]
-    children: bool,
-    #[arg(long)]
-    no_compress: bool,
-    #[arg(long)]
-    exclude: bool,
-    #[arg(long)]
-    output_fasta: bool,
-}
-
 struct OutputConfig {
     no_compress: bool,
     compression_mode: Compression,
@@ -81,12 +52,12 @@ impl OutputConfig {
     ) -> Self {
         //detect compression mode
         let compression_mode = match compression_mode.as_deref() {
-            // change compression mode to level(1-9) if specified
+            //TODO change compression mode to level(1-9) if specified
             Some("fast") => Compression::fast(),
             Some("default") => Compression::default(),
             Some("best") => Compression::best(),
             _ => {
-                eprintln!("Invalid compression mode. Using default compression.");
+                warn!("Invalid compression mode. Using default compression.");
                 Compression::default()
             }
         };
@@ -117,10 +88,12 @@ fn read_fastq(path: &str) -> BufReader<Box<dyn io::Read + Send>> {
     // The gzip magic number is 0x1f8b
     const GZIP_MAGIC_NUMBER: [u8; 2] = [0x1f, 0x8b];
 
-    let mut file = if let Ok(file) = fs::File::open(path) {
-        file
-    } else {
-        panic!("Error opening or reading the file");
+    let mut file = match fs::File::open(path) {
+        Ok(file) => file,
+        Err(_) => {
+            error!("Error opening fastq file");
+            std::process::exit(1);
+        }
     };
 
     // Buffer to store the first two bytes of the file
@@ -132,9 +105,11 @@ fn read_fastq(path: &str) -> BufReader<Box<dyn io::Read + Send>> {
         // check if the first two bytes match the gzip magic number => file is gzipped
         // otherwise, it's a plain text file
         if size == 2 && buffer == GZIP_MAGIC_NUMBER {
+            trace!("Detected gzipped file");
             let gzip_reader: Box<dyn io::Read + Send> = Box::new(GzDecoder::new(file));
             io::BufReader::new(gzip_reader)
         } else {
+            trace!("Detected plain text file");
             let plain_reader: Box<dyn io::Read + Send> = Box::new(file);
             io::BufReader::new(plain_reader)
         }
@@ -182,11 +157,18 @@ fn process_kraken_output(
     taxon_ids_to_save: Vec<i32>,
 ) -> Arc<HashMap<String, i32>> {
     let mut reads_to_save = HashMap::new();
-    let kraken_file = fs::File::open(kraken_path).expect("Error reading kraken output file");
+    //let kraken_file = fs::File::open(kraken_path).expect("Error reading kraken output file");
+    let kraken_file = match fs::File::open(kraken_path) {
+        Ok(kraken_file) => kraken_file,
+        Err(_) => {
+            error!("Error opening kraken output file");
+            std::process::exit(1);
+        }
+    };
     let reader = io::BufReader::new(kraken_file);
     let mut total_reads = 0;
 
-    print!("  Processing kraken output...");
+    info!("Processing kraken output");
     io::stdout().flush().unwrap();
     for line_result in reader.lines() {
         let line = line_result.expect("Error reading kraken output line");
@@ -200,10 +182,9 @@ fn process_kraken_output(
         }
         total_reads += 1;
     }
-    println!("Done!");
-    println!("  {} taxon IDs identified", taxon_ids_to_save.len());
-    println!(
-        "  {} total reads | {} reads to save.",
+    info!("{} taxon IDs identified", taxon_ids_to_save.len());
+    info!(
+        "{} total reads | {} reads to extract.",
         total_reads,
         reads_to_save.len()
     );
@@ -315,11 +296,14 @@ fn build_tree_from_kraken_report(
     // taxonid -> index in the nodes vector
     let mut taxon_map = HashMap::new();
 
-    let report_file = if let Ok(report_file) = fs::File::open(report_path) {
-        report_file
-    } else {
-        panic!("Error opening or reading the file");
+    let report_file = match fs::File::open(report_path) {
+        Ok(report_file) => report_file,
+        Err(_) => {
+            error!("Error opening kraken report file");
+            std::process::exit(1);
+        }
     };
+
     {
         let reader = io::BufReader::new(report_file);
         let mut prev_index = None;
@@ -379,11 +363,10 @@ fn build_tree_from_kraken_report(
 /// # Returns
 ///
 /// A vector of taxon IDs that need to be saved.
-fn collect_taxons_to_save(args: &Args) -> Vec<i32> {
+fn collect_taxons_to_save(args: &Cli) -> Vec<i32> {
     let mut taxon_ids_to_save = Vec::new();
     if args.report.is_some() {
-        print!("  Processing kraken report...");
-        io::stdout().flush().unwrap();
+        info!("Processing kraken report");
         let report_path = args.report.clone().unwrap();
         let (nodes, taxon_map) = build_tree_from_kraken_report(args.taxid, report_path);
         if args.children {
@@ -395,7 +378,6 @@ fn collect_taxons_to_save(args: &Args) -> Vec<i32> {
         } else {
             taxon_ids_to_save.push(args.taxid);
         }
-        println!("Done!");
     } else {
         taxon_ids_to_save.push(args.taxid);
     }
@@ -425,9 +407,7 @@ fn parse_fastq(
     //let mut stdout = BufWriter::new(io::stdout().lock());
     let mut line_bytes = Vec::new();
     let mut last_progress_update = Instant::now(); // For throttling progress updates
-    const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_millis(1000);
-
-    println!("  Reading fastq:");
+    const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_millis(1500);
 
     for line in in_buf.lines() {
         let line = line.expect("Error reading fastq line");
@@ -457,9 +437,9 @@ fn parse_fastq(
         }
         // Throttle progress updates - need to fix for multi-threading
         if last_progress_update.elapsed() >= PROGRESS_UPDATE_INTERVAL {
-            print!("\rProcessed {} reads", num_reads);
+            trace!("Processed {} reads", num_reads);
             last_progress_update = Instant::now();
-            io::stdout().flush().unwrap();
+            //io::stdout().flush().unwrap();
         }
     }
 }
@@ -496,7 +476,15 @@ fn process_single_end(
 ) {
     let (tx, rx) = channel::unbounded::<Vec<u8>>();
     let writer_thread = thread::spawn(move || {
-        let out_file = fs::File::create(output_config.output1).expect("Error creating output file");
+        //let out_file = fs::File::create(output_config.output1).expect("Error creating output file");
+        let out_file = match fs::File::create(output_config.output1) {
+            Ok(out_file) => out_file,
+            Err(_) => {
+                error!("Error opening output file for writing");
+                std::process::exit(1);
+            }
+        };
+
         write_output_file(
             out_file,
             rx,
@@ -511,9 +499,10 @@ fn process_single_end(
             parse_fastq(in_buf, &tx, reads_to_save_arc, output_config.output_fasta);
         }
     });
-    println!("  Processing is done. Writing is in progress...");
-    writer_thread.join().unwrap();
     reader_thread.join().unwrap();
+    info!("Processing is done. Writing is in progress...");
+    writer_thread.join().unwrap();
+    info!("Writing complete.");
 }
 
 fn process_paired_end(
@@ -526,7 +515,13 @@ fn process_paired_end(
     let (tx2, rx2) = channel::unbounded::<Vec<u8>>();
 
     let writer_thread1 = thread::spawn(move || {
-        let out_file = fs::File::create(output_config.output1).expect("Error creating output file");
+        let out_file = match fs::File::create(output_config.output1) {
+            Ok(out_file) => out_file,
+            Err(_) => {
+                error!("Error opening output1 file for writing");
+                std::process::exit(1);
+            }
+        };
         write_output_file(
             out_file,
             rx1,
@@ -537,8 +532,13 @@ fn process_paired_end(
     });
 
     let writer_thread2 = thread::spawn(move || {
-        let out_file =
-            fs::File::create(output_config.output2.unwrap()).expect("Error creating output file");
+        let out_file = match fs::File::create(output_config.output2.unwrap()) {
+            Ok(out_file) => out_file,
+            Err(_) => {
+                error!("Error opening output2 file for writing");
+                std::process::exit(1);
+            }
+        };
         write_output_file(
             out_file,
             rx2,
@@ -567,19 +567,34 @@ fn process_paired_end(
 }
 
 fn main() {
-    let args = Args::parse();
+    //init logging
+    let env = Env::default().filter_or("RUST_LOG", "info");
+    env_logger::init_from_env(env);
+
+    //init args
+    let args = Cli::parse();
+
     //check if paired-end reads are provided
-    let paired = args.fastq2.is_some();
-    if paired && args.output2.is_none() {
-        panic!("Error: Paired-end reads provided but no output2 file specified");
-    }
-    if args.output2.is_some() && !paired {
-        panic!("Error: output2 file specified but no paired-end reads provided");
+    let paired = args.input.len() == 2;
+    if paired {
+        info!("Detected two input files. Assuming paired-end reads");
+    } else {
+        info!("Detected one input file. Assuming single-end reads");
     }
 
-    println!(">> Step 1: Collecting taxon and read IDs to save");
+    //TODO - redo checks here for new CLI structure - move to cli.rs
+    // if paired && args.output2.is_none() {
+    //     error!("Paired-end reads provided but no output2 file specified");
+    //     std::process::exit(1);
+    // }
+    // if args.output2.is_some() && !paired {
+    //     error!("output2 file specified but no paired-end reads provided");
+    //     std::process::exit(1);
+    // }
+
+    //println!(">> Step 1: Collecting taxon and read IDs to save");
+    //info!("Collecting taxon and read IDs to save");
     let taxon_ids_to_save = collect_taxons_to_save(&args);
-    io::stdout().flush().unwrap();
     let reads_to_save = process_kraken_output(args.kraken, args.exclude, taxon_ids_to_save);
 
     //create output from struct
@@ -591,17 +606,17 @@ fn main() {
         args.output_fasta,
     );
 
-    println!(">> Step 2: Extracting reads to save and creating output");
+    //println!(">> Step 2: Extracting reads to save and creating output");
+    info!("Processing reads...");
     if !paired {
         // we are single end
-        let in_buf = read_fastq(&args.fastq);
-        process_single_end(output_config, reads_to_save.clone(), in_buf);
+        let in_buf1 = read_fastq(&args.input[0]);
+        process_single_end(output_config, reads_to_save.clone(), in_buf1);
     } else {
         //we are paired end and so we need to spawn two writer threads and two reader threads
-        let in_buf1 = read_fastq(&args.fastq);
-        let in_buf2 = read_fastq(&args.fastq2.unwrap());
+        //info!("Processing paired-end reads");
+        let in_buf1 = read_fastq(&args.input[0]);
+        let in_buf2 = read_fastq(&args.input[1]);
         process_paired_end(output_config, reads_to_save.clone(), in_buf1, in_buf2);
     }
-
-    println!("Writing complete.");
 }

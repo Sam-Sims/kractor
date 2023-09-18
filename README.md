@@ -7,7 +7,6 @@
 
 Extract reads from a FASTQ file based on taxonomic classification via Kraken2.
 
-Written in Rust.
 
 ## Motivation
 
