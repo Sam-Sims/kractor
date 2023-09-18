@@ -1,15 +1,14 @@
 use clap::Parser;
+use crossbeam::channel::{self, Receiver, Sender};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use std::{
     collections::HashMap,
     fs::{self},
-    io::{self, prelude::*, BufReader, BufWriter},
+    io::{self, prelude::*, BufReader},
     sync::Arc,
     thread,
     time::{Duration, Instant},
 };
-
-use crossbeam::channel::{Sender, Receiver, unbounded};
 
 #[derive(Debug, Clone)]
 struct Tree {
@@ -62,6 +61,39 @@ struct Args {
     exclude: bool,
 }
 
+struct OutputConfig {
+    no_compress: bool,
+    compression_mode: Compression,
+    output1: String,
+    output2: Option<String>,
+}
+
+impl OutputConfig {
+    fn new(
+        no_compress: bool,
+        compression_mode: Option<String>,
+        output1: String,
+        output2: Option<String>,
+    ) -> Self {
+        //detect compression mode
+        let compression_mode = match compression_mode.as_deref() {
+            Some("fast") => Compression::fast(),
+            Some("default") => Compression::default(),
+            Some("best") => Compression::best(),
+            _ => {
+                eprintln!("Invalid compression mode. Using default compression.");
+                Compression::default()
+            }
+        };
+        OutputConfig {
+            no_compress,
+            compression_mode,
+            output1,
+            output2,
+        }
+    }
+}
+
 /// Reads a FASTQ file from the specified path and returns a buffered reader.
 ///
 /// This function reads a FASTQ file from the given path and returns a buffered reader
@@ -75,7 +107,7 @@ struct Args {
 ///
 /// A buffered reader containing the contents of the FASTQ file. The reader may be a
 /// plain text reader or a gzip decompressor, depending on the file format.
-fn read_fastq(path: &str) -> BufReader<Box<dyn io::Read + Send + 'static>> {
+fn read_fastq(path: &str) -> BufReader<Box<dyn io::Read + Send>> {
     // The gzip magic number is 0x1f8b
     const GZIP_MAGIC_NUMBER: [u8; 2] = [0x1f, 0x8b];
 
@@ -438,18 +470,82 @@ fn write_output_file(
     out_buf.flush().expect("Error flushing output buffer");
 }
 
+fn process_single_end(
+    output_config: OutputConfig,
+    reads_to_save_arc: Arc<HashMap<String, i32>>,
+    in_buf: io::BufReader<Box<dyn Read + Send>>,
+) {
+    let (tx, rx) = channel::unbounded::<Vec<u8>>();
+    let writer_thread = thread::spawn(move || {
+        let out_file = fs::File::create(output_config.output1).expect("Error creating output file");
+        write_output_file(
+            out_file,
+            rx,
+            output_config.compression_mode,
+            output_config.no_compress,
+        );
+    });
+    let reader_thread = thread::spawn({
+        let reads_to_save_arc = reads_to_save_arc.clone();
+        move || {
+            parse_fastq(in_buf, &tx, reads_to_save_arc);
+        }
+    });
+    println!("  Processing is done. Writing is in progress...");
+    writer_thread.join().unwrap();
+    reader_thread.join().unwrap();
+}
+
+fn process_paired_end(
+    output_config: OutputConfig,
+    reads_to_save_arc: Arc<HashMap<String, i32>>,
+    in_buf1: io::BufReader<Box<dyn Read + Send>>,
+    in_buf2: io::BufReader<Box<dyn Read + Send>>,
+) {
+    let (tx1, rx1) = channel::unbounded::<Vec<u8>>();
+    let (tx2, rx2) = channel::unbounded::<Vec<u8>>();
+
+    let writer_thread1 = thread::spawn(move || {
+        let out_file = fs::File::create(output_config.output1).expect("Error creating output file");
+        write_output_file(
+            out_file,
+            rx1,
+            output_config.compression_mode,
+            output_config.no_compress,
+        );
+    });
+
+    let writer_thread2 = thread::spawn(move || {
+        let out_file =
+            fs::File::create(output_config.output2.unwrap()).expect("Error creating output file");
+        write_output_file(
+            out_file,
+            rx2,
+            output_config.compression_mode,
+            output_config.no_compress,
+        );
+    });
+    let reader_thread1 = thread::spawn({
+        let reads_to_save_arc = reads_to_save_arc.clone();
+        move || {
+            parse_fastq(in_buf1, &tx1, reads_to_save_arc);
+        }
+    });
+    let reader_thread2 = thread::spawn({
+        let reads_to_save_arc = reads_to_save_arc.clone();
+        move || {
+            parse_fastq(in_buf2, &tx2, reads_to_save_arc);
+        }
+    });
+
+    writer_thread1.join().unwrap();
+    writer_thread2.join().unwrap();
+    reader_thread1.join().unwrap();
+    reader_thread2.join().unwrap();
+}
+
 fn main() {
     let args = Args::parse();
-    let compression_mode = match args.compression_mode.as_deref() {
-        Some("fast") => Compression::fast(),
-        Some("default") => Compression::default(),
-        Some("best") => Compression::best(),
-        _ => {
-            eprintln!("Invalid compression mode. Using default compression.");
-            Compression::default()
-        }
-    };
-
     //check if paired-end reads are provided
     let paired = args.fastq2.is_some();
     if paired && args.output2.is_none() {
@@ -465,61 +561,24 @@ fn main() {
     let reads_to_save = process_kraken_output(args.kraken, args.exclude, taxon_ids_to_save);
     let reads_to_save_arc: Arc<HashMap<String, i32>> = Arc::new(reads_to_save);
 
+    //create output from struct
+    let output_config = OutputConfig::new(
+        args.no_compress,
+        args.compression_mode,
+        args.output,
+        args.output2,
+    );
+
     println!(">> Step 2: Extracting reads to save and creating output");
     if !paired {
-        // Spawn the writer thread
-        let (tx, rx) = unbounded::<Vec<u8>>();
-        let writer_thread = thread::spawn(move || {
-            let out_file = fs::File::create(args.output).expect("Error creating output file");
-            write_output_file(out_file, rx, compression_mode, args.no_compress);
-        });
+        // we are single end
         let in_buf = read_fastq(&args.fastq);
-        let reader_thread = thread::spawn({
-            let reads_to_save_arc = reads_to_save_arc.clone();
-            move || {
-                parse_fastq(in_buf, &tx, reads_to_save_arc);
-            }
-        });
-        println!("  Processing is done. Writing is in progress...");
-        writer_thread.join().unwrap();
-        
+        process_single_end(output_config, reads_to_save_arc.clone(), in_buf);
     } else {
         //we are paired end and so we need to spawn two writer threads and two reader threads
-
-        let (tx1, rx1) = unbounded::<Vec<u8>>();
-        let (tx2, rx2) = unbounded::<Vec<u8>>();
-
-        let writer_thread1 = thread::spawn(move || {
-            let out_file = fs::File::create(args.output).expect("Error creating output file");
-            write_output_file(out_file, rx1, compression_mode, args.no_compress);
-        });
-
-        let writer_thread2 = thread::spawn(move || {
-            let out_file =
-                fs::File::create(args.output2.unwrap()).expect("Error creating output file");
-            write_output_file(out_file, rx2, compression_mode, args.no_compress);
-        });
-
         let in_buf1 = read_fastq(&args.fastq);
         let in_buf2 = read_fastq(&args.fastq2.unwrap());
-
-        let reader_thread1 = thread::spawn({
-            let reads_to_save_arc = reads_to_save_arc.clone();
-            move || {
-                parse_fastq(in_buf1, &tx1, reads_to_save_arc);
-            }
-        });
-        let reader_thread2 = thread::spawn({
-            let reads_to_save_arc = reads_to_save_arc.clone();
-            move || {
-                parse_fastq(in_buf2, &tx2, reads_to_save_arc);
-            }
-        });
-
-        writer_thread1.join().unwrap();
-        writer_thread2.join().unwrap();
-        reader_thread1.join().unwrap();
-        reader_thread2.join().unwrap();
+        process_paired_end(output_config, reads_to_save_arc.clone(), in_buf1, in_buf2);
     }
 
     println!("Writing complete.");
