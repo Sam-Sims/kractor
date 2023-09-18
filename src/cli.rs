@@ -1,4 +1,5 @@
 use clap::Parser;
+use flate2::Compression;
 use log::{debug, error, info, trace, warn};
 
 #[derive(Parser, Debug)]
@@ -7,27 +8,39 @@ use log::{debug, error, info, trace, warn};
     about = "Extract reads from a FASTQ file based on taxonomic classification via Kraken2."
 )]
 pub struct Cli {
-    // Fastq file to extract reads from
+    // Fastq file(s)
     #[arg(short = 'i', long = "input", num_args(0..=2), required = true)]
     pub input: Vec<String>,
-    #[arg(short, long)]
+    // Kraken2 output file
+    #[arg(short = 'k', long = "kraken", required = true)]
     pub kraken: String,
-    #[arg(short, long)]
+    // Taxid to extract reads for
+    #[arg(short = 't', long = "taxid", required = true)]
     pub taxid: i32,
-    #[arg(short, long)]
+    // Kraken2 report file
+    #[arg(short = 'r', long = "report")]
     pub report: Option<String>,
+    // Output file(s)
     #[arg(short = 'o', long = "output", num_args(0..=2), required = true)]
     pub output: Vec<String>,
-    #[arg(long, default_value = "fast")]
-    pub compression_mode: Option<String>,
+    //TODO - change to number
+    // Compression level
+    #[arg(long = "compression-level", default_value = "2")]
+    pub compression_level: i32,
+    // Extract reads from parents
     #[arg(long, action)]
     pub parents: bool,
+    // Extract reads from children
     #[arg(long, action)]
     pub children: bool,
+    //TODO - Infer output format from file extension
+    // Dont compress output
     #[arg(long)]
     pub no_compress: bool,
+    // Exclude reads matching taxid
     #[arg(long)]
     pub exclude: bool,
+    // Output reads in FASTA format
     #[arg(long)]
     pub output_fasta: bool,
 }

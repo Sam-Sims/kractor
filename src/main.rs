@@ -42,16 +42,21 @@ struct OutputConfig {
 }
 
 impl OutputConfig {
-    fn new(no_compress: bool, compression_mode: Option<String>, output_fasta: bool) -> Self {
-        //detect compression mode
-        let compression_mode = match compression_mode.as_deref() {
-            //TODO change compression mode to level(1-9) if specified
-            Some("fast") => Compression::fast(),
-            Some("default") => Compression::default(),
-            Some("best") => Compression::best(),
+    fn new(no_compress: bool, compression_mode: i32, output_fasta: bool) -> Self {
+        //detect compression mode from compression level and convert to Compression
+        let compression_mode = match compression_mode {
+            1 => Compression::new(1),
+            2 => Compression::new(2),
+            3 => Compression::new(3),
+            4 => Compression::new(4),
+            5 => Compression::new(5),
+            6 => Compression::new(6),
+            7 => Compression::new(7),
+            8 => Compression::new(8),
+            9 => Compression::new(9),
             _ => {
-                warn!("Invalid compression mode. Using default compression.");
-                Compression::default()
+                warn!("Invalid compression level specified. Using default (2)");
+                Compression::new(2)
             }
         };
         OutputConfig {
@@ -412,17 +417,17 @@ fn parse_fastq(
             current_id = read_id.to_string();
             num_reads += 1;
         }
-
         if reads_to_save.contains_key(&current_id) {
-            //TODO - probably dont want to output a gz if fasta
-            // if we want to outout a fasta, and are on first line of read - the ID
-            if output_fasta && num_lines % 4 == 1 {
-                let fasta_header = format!("> {}", current_id);
-                tx.send(fasta_header.as_bytes().to_vec()).unwrap();
-            // if we want to output a fasta, and are on the second line of the read - the sequence
-            } else if output_fasta && num_lines % 4 == 2 {
-                tx.send(line_bytes.to_vec()).unwrap();
-            } else if !output_fasta {
+            if output_fasta {
+                match num_lines % 4 {
+                    1 => {
+                        let fasta_header = format!("> {}", current_id);
+                        tx.send(fasta_header.as_bytes().to_vec()).unwrap();
+                    }
+                    2 => tx.send(line_bytes.to_vec()).unwrap(),
+                    _ => (),
+                }
+            } else {
                 tx.send(line_bytes.to_vec()).unwrap();
             }
         }
@@ -554,26 +559,13 @@ fn main() {
         info!("Detected one input file. Assuming single-end reads");
     }
 
-    //TODO - redo checks here for new CLI structure - move to cli.rs
-    // if paired && args.output2.is_none() {
-    //     error!("Paired-end reads provided but no output2 file specified");
-    //     std::process::exit(1);
-    // }
-    // if args.output2.is_some() && !paired {
-    //     error!("output2 file specified but no paired-end reads provided");
-    //     std::process::exit(1);
-    // }
-
-    //println!(">> Step 1: Collecting taxon and read IDs to save");
-    //info!("Collecting taxon and read IDs to save");
     let taxon_ids_to_save = collect_taxons_to_save(&args);
     let reads_to_save = process_kraken_output(args.kraken, args.exclude, taxon_ids_to_save);
 
     //create output from struct
     let output_config =
-        OutputConfig::new(args.no_compress, args.compression_mode, args.output_fasta);
+        OutputConfig::new(args.no_compress, args.compression_level, args.output_fasta);
 
-    //println!(">> Step 2: Extracting reads to save and creating output");
     info!("Processing reads...");
     if !paired {
         let out_file = match fs::File::create(&args.output[0]) {
