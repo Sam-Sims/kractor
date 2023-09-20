@@ -42,18 +42,10 @@ struct OutputConfig {
 }
 
 impl OutputConfig {
-    fn new(no_compress: bool, compression_mode: i32, output_fasta: bool) -> Self {
+    fn new(no_compress: bool, compression_mode: u32, output_fasta: bool) -> Self {
         //detect compression mode from compression level and convert to Compression
         let compression_mode = match compression_mode {
-            1 => Compression::new(1),
-            2 => Compression::new(2),
-            3 => Compression::new(3),
-            4 => Compression::new(4),
-            5 => Compression::new(5),
-            6 => Compression::new(6),
-            7 => Compression::new(7),
-            8 => Compression::new(8),
-            9 => Compression::new(9),
+            1..=9 => Compression::new(compression_mode),
             _ => {
                 warn!("Invalid compression level specified. Using default (2)");
                 Compression::new(2)
@@ -391,6 +383,7 @@ fn collect_taxons_to_save(args: &Cli) -> Vec<i32> {
 /// * `in_buf` - A buffered reader for the Fastq file.
 /// * `tx` - A channel sender for sending sequences of selected reads.
 /// * `reads_to_save` - A HashMap containing read IDs and corresponding taxon IDs.
+/// * `output_fasta` - A boolean flag indicating whether to format the output as FASTA (true) or not (false).
 fn parse_fastq(
     in_buf: io::BufReader<Box<dyn Read + Send>>,
     tx: &Sender<Vec<u8>>,
@@ -440,6 +433,18 @@ fn parse_fastq(
     }
 }
 
+/// Write fastq data to output file
+///
+/// This function takes received data from the provided Receiver channel corresponding to an inputfile and writes it to the specified output
+/// file to an output file, optionally applying compression.
+///
+/// # Arguments
+///
+/// * `out_file`: A file representing the output file where data will be written.
+/// * `rx`: A Receiver from which parsed fastq lines will be received.
+/// * `compression_mode`: A Compression enum representing the compression mode to apply when writing data.
+/// * `no_compress`: A boolean flag indicating whether to skip compression (true) or apply it (false).
+/// * `output_fasta`: A boolean flag indicating whether to format the output as FASTA (true) or not (false).
 fn write_output_file(
     out_file: fs::File,
     rx: Receiver<Vec<u8>>,
@@ -465,6 +470,18 @@ fn write_output_file(
     out_buf.flush().expect("Error flushing output buffer");
 }
 
+/// Process single-end reads from a FASTQ file.
+///
+/// This function runs the processing of single-end reads from a FASTQ file.
+/// It spawns two threads: one for reading and parsing the FASTQ file and another for writing
+/// the selected reads to an output file.
+///
+/// # Arguments
+///
+/// * `output_config` - The configuration for output options, including compression and output types.
+/// * `reads_to_save` - A HashMap containing read IDs and their associated taxon IDs.
+/// * `in_buf` - A buffered reader wrapping the FASTQ file input.
+/// * `out_file` - The output file where selected reads will be written.
 fn process_single_end(
     output_config: OutputConfig,
     reads_to_save: Arc<HashMap<String, i32>>,
@@ -493,6 +510,20 @@ fn process_single_end(
     info!("Writing complete.");
 }
 
+/// Process paired-end reads from FASTQ files.
+///
+/// This function runs the processing of paired-end reads from two FASTQ input files.
+/// It spawns two threads for reading and parsing each input file and two threads for writing
+/// selected reads to their respective output files.
+///
+/// # Arguments
+///
+/// * `output_config` - The configuration for output options, including compression and formatting settings.
+/// * `reads_to_save` - A HashMap containing read IDs and their associated taxon IDs.
+/// * `in_buf1` - A buffered reader wrapping the first input FASTQ file.
+/// * `in_buf2` - A buffered reader wrapping the second input FASTQ file.
+/// * `out_file1` - The output file for the first set of selected reads.
+/// * `out_file2` - The output file for the second set of selected reads.
 fn process_paired_end(
     output_config: OutputConfig,
     reads_to_save: Arc<HashMap<String, i32>>,
@@ -559,10 +590,12 @@ fn main() {
         info!("Detected one input file. Assuming single-end reads");
     }
 
+    // collect the taxon IDs to save and map those to read IDs
     let taxon_ids_to_save = collect_taxons_to_save(&args);
     let reads_to_save = process_kraken_output(args.kraken, args.exclude, taxon_ids_to_save);
 
-    //create output from struct
+    //create output config
+    //TODO - can probably refactor this into CLI ?
     let output_config =
         OutputConfig::new(args.no_compress, args.compression_level, args.output_fasta);
 

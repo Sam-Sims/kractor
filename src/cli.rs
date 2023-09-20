@@ -23,10 +23,9 @@ pub struct Cli {
     // Output file(s)
     #[arg(short = 'o', long = "output", num_args(0..=2), required = true)]
     pub output: Vec<String>,
-    //TODO - change to number
     // Compression level
     #[arg(long = "compression-level", default_value = "2")]
-    pub compression_level: i32,
+    pub compression_level: u32,
     // Extract reads from parents
     #[arg(long, action)]
     pub parents: bool,
