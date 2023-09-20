@@ -4,10 +4,13 @@ use crossbeam::channel::{self, Receiver, Sender};
 use env_logger::Env;
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use log::{debug, error, info, trace, warn};
+use niffler::compression::{self, Format};
+use noodles::fastq;
 use std::{
     collections::HashMap,
     fs::{self},
     io::{self, prelude::*, BufReader},
+    path::Path,
     sync::Arc,
     thread,
     time::{Duration, Instant},
@@ -30,31 +33,6 @@ impl Tree {
             level_num,
             children: Vec::new(),
             parent,
-        }
-    }
-}
-
-//TODO reimplement this - perhaps switch to niffler?
-struct OutputConfig {
-    no_compress: bool,
-    compression_mode: Compression,
-    output_fasta: bool,
-}
-
-impl OutputConfig {
-    fn new(no_compress: bool, compression_mode: u32, output_fasta: bool) -> Self {
-        //detect compression mode from compression level and convert to Compression
-        let compression_mode = match compression_mode {
-            1..=9 => Compression::new(compression_mode),
-            _ => {
-                warn!("Invalid compression level specified. Using default (2)");
-                Compression::new(2)
-            }
-        };
-        OutputConfig {
-            no_compress,
-            compression_mode,
-            output_fasta,
         }
     }
 }
@@ -384,47 +362,84 @@ fn collect_taxons_to_save(args: &Cli) -> Vec<i32> {
 /// * `tx` - A channel sender for sending sequences of selected reads.
 /// * `reads_to_save` - A HashMap containing read IDs and corresponding taxon IDs.
 /// * `output_fasta` - A boolean flag indicating whether to format the output as FASTA (true) or not (false).
+// fn parse_fastq(
+//     in_buf: io::BufReader<Box<dyn Read + Send>>,
+//     tx: &Sender<Vec<u8>>,
+//     reads_to_save: Arc<HashMap<String, i32>>,
+//     output_fasta: bool,
+// ) {
+//     let mut num_lines = 0;
+//     let mut num_reads = 0;
+//     let mut current_id: String = String::new();
+//     //let mut stdout = BufWriter::new(io::stdout().lock());
+//     let mut line_bytes = Vec::new();
+//     let mut last_progress_update = Instant::now(); // For throttling progress updates
+//     const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_millis(1500);
+
+//     for line in in_buf.lines() {
+//         let line = line.expect("Error reading fastq line");
+//         line_bytes.clear();
+//         line_bytes.extend_from_slice(line.as_bytes());
+//         num_lines += 1;
+
+//         if num_lines % 4 == 1 {
+//             let fields: Vec<&str> = line.split_whitespace().collect();
+//             let read_id = &fields[0][1..];
+//             current_id = read_id.to_string();
+//             num_reads += 1;
+//         }
+//         if reads_to_save.contains_key(&current_id) {
+//             if output_fasta {
+//                 match num_lines % 4 {
+//                     1 => {
+//                         let fasta_header = format!("> {}", current_id);
+//                         tx.send(fasta_header.as_bytes().to_vec()).unwrap();
+//                     }
+//                     2 => tx.send(line_bytes.to_vec()).unwrap(),
+//                     _ => (),
+//                 }
+//             } else {
+//                 tx.send(line_bytes.to_vec()).unwrap();
+//             }
+//         }
+//         // Throttle progress updates - need to fix for multi-threading
+//         if last_progress_update.elapsed() >= PROGRESS_UPDATE_INTERVAL {
+//             trace!("Processed {} reads", num_reads);
+//             last_progress_update = Instant::now();
+//             //io::stdout().flush().unwrap();
+//         }
+//     }
+// }
+
 fn parse_fastq(
-    in_buf: io::BufReader<Box<dyn Read + Send>>,
-    tx: &Sender<Vec<u8>>,
+    file_path: &str,
     reads_to_save: Arc<HashMap<String, i32>>,
-    output_fasta: bool,
+    tx: &Sender<fastq::Record>,
 ) {
-    let mut num_lines = 0;
     let mut num_reads = 0;
-    let mut current_id: String = String::new();
-    //let mut stdout = BufWriter::new(io::stdout().lock());
-    let mut line_bytes = Vec::new();
-    let mut last_progress_update = Instant::now(); // For throttling progress updates
+
+    let mut last_progress_update = Instant::now();
     const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_millis(1500);
 
-    for line in in_buf.lines() {
-        let line = line.expect("Error reading fastq line");
-        line_bytes.clear();
-        line_bytes.extend_from_slice(line.as_bytes());
-        num_lines += 1;
+    let (reader, format) = niffler::from_path(file_path).unwrap();
+    trace!(
+        "Detected input compression type for file {:?} as: {:?}",
+        file_path,
+        format
+    );
+    let reader = BufReader::new(reader);
+    let mut fastq_reader = fastq::Reader::new(reader);
 
-        if num_lines % 4 == 1 {
-            let fields: Vec<&str> = line.split_whitespace().collect();
-            let read_id = &fields[0][1..];
-            current_id = read_id.to_string();
-            num_reads += 1;
+    for result in fastq_reader.records() {
+        //todo might be able to make this more efficient by not converting to string
+        let record = result.unwrap();
+        let read_name_bytes = record.name();
+        let read_name_string = std::str::from_utf8(read_name_bytes);
+        if reads_to_save.contains_key(&read_name_string.unwrap().to_string()) {
+            tx.send(record).unwrap();
         }
-        if reads_to_save.contains_key(&current_id) {
-            if output_fasta {
-                match num_lines % 4 {
-                    1 => {
-                        let fasta_header = format!("> {}", current_id);
-                        tx.send(fasta_header.as_bytes().to_vec()).unwrap();
-                    }
-                    2 => tx.send(line_bytes.to_vec()).unwrap(),
-                    _ => (),
-                }
-            } else {
-                tx.send(line_bytes.to_vec()).unwrap();
-            }
-        }
-        // Throttle progress updates - need to fix for multi-threading
+        num_reads += 1;
+        //TODO - fix for paired end?
         if last_progress_update.elapsed() >= PROGRESS_UPDATE_INTERVAL {
             trace!("Processed {} reads", num_reads);
             last_progress_update = Instant::now();
@@ -445,29 +460,48 @@ fn parse_fastq(
 /// * `compression_mode`: A Compression enum representing the compression mode to apply when writing data.
 /// * `no_compress`: A boolean flag indicating whether to skip compression (true) or apply it (false).
 /// * `output_fasta`: A boolean flag indicating whether to format the output as FASTA (true) or not (false).
-fn write_output_file(
-    out_file: fs::File,
-    rx: Receiver<Vec<u8>>,
-    compression_mode: Compression,
-    no_compress: bool,
-    output_fasta: bool,
-) {
-    let mut out_buf: Box<dyn io::Write> = if no_compress || output_fasta {
-        Box::new(io::BufWriter::new(out_file))
-    } else {
-        Box::new(io::BufWriter::new(GzEncoder::new(
-            out_file,
-            compression_mode,
-        )))
+// fn write_output_file(
+//     out_file: fs::File,
+//     rx: Receiver<Vec<u8>>,
+//     compression_mode: Compression,
+//     no_compress: bool,
+//     output_fasta: bool,
+// ) {
+//     let mut out_buf: Box<dyn io::Write> = if no_compress || output_fasta {
+//         Box::new(io::BufWriter::new(out_file))
+//     } else {
+//         Box::new(io::BufWriter::new(GzEncoder::new(
+//             out_file,
+//             compression_mode,
+//         )))
+//     };
+
+//     for data in rx {
+//         out_buf
+//             .write_all(&data)
+//             .and_then(|_| out_buf.write_all(b"\n"))
+//             .expect("Error writing to output file");
+//     }
+//     out_buf.flush().expect("Error flushing output buffer");
+// }
+
+fn write_output_file(rx: Receiver<fastq::Record>, out_file: String) {
+    let compression_type = infer_compression(&out_file);
+    let out_file = match fs::File::create(out_file) {
+        Ok(out_file1) => out_file1,
+        Err(_) => {
+            error!("Error opening output2 file for writing");
+            std::process::exit(1);
+        }
     };
 
-    for data in rx {
-        out_buf
-            .write_all(&data)
-            .and_then(|_| out_buf.write_all(b"\n"))
-            .expect("Error writing to output file");
+    let file_handle = Box::new(io::BufWriter::new(out_file));
+    let writer = niffler::get_writer(file_handle, compression_type, niffler::Level::Two).unwrap();
+
+    let mut fastq_writer = fastq::Writer::new(writer);
+    for record in rx {
+        fastq_writer.write_record(&record).unwrap();
     }
-    out_buf.flush().expect("Error flushing output buffer");
 }
 
 /// Process single-end reads from a FASTQ file.
@@ -483,25 +517,22 @@ fn write_output_file(
 /// * `in_buf` - A buffered reader wrapping the FASTQ file input.
 /// * `out_file` - The output file where selected reads will be written.
 fn process_single_end(
-    output_config: OutputConfig,
     reads_to_save: Arc<HashMap<String, i32>>,
-    in_buf: io::BufReader<Box<dyn Read + Send>>,
-    out_file: fs::File,
+    //in_buf: io::BufReader<Box<dyn Read + Send>>,
+    input: Vec<String>,
+    output: Vec<String>,
 ) {
-    let (tx, rx) = channel::unbounded::<Vec<u8>>();
+    let (tx, rx) = channel::unbounded::<fastq::Record>();
+    let output_file = output[0].clone();
+
     let writer_thread = thread::spawn(move || {
-        write_output_file(
-            out_file,
-            rx,
-            output_config.compression_mode,
-            output_config.no_compress,
-            output_config.output_fasta,
-        );
+        write_output_file(rx, output_file);
     });
+
     let reader_thread = thread::spawn({
         let reads_to_save_arc = reads_to_save.clone();
         move || {
-            parse_fastq(in_buf, &tx, reads_to_save_arc, output_config.output_fasta);
+            parse_fastq(&input[0], reads_to_save_arc, &tx);
         }
     });
     reader_thread.join().unwrap();
@@ -525,45 +556,34 @@ fn process_single_end(
 /// * `out_file1` - The output file for the first set of selected reads.
 /// * `out_file2` - The output file for the second set of selected reads.
 fn process_paired_end(
-    output_config: OutputConfig,
     reads_to_save: Arc<HashMap<String, i32>>,
-    in_buf1: io::BufReader<Box<dyn Read + Send>>,
-    in_buf2: io::BufReader<Box<dyn Read + Send>>,
-    out_file1: fs::File,
-    out_file2: fs::File,
+    input: Vec<String>,
+    output: Vec<String>,
 ) {
-    let (tx1, rx1) = channel::unbounded::<Vec<u8>>();
-    let (tx2, rx2) = channel::unbounded::<Vec<u8>>();
+    let (tx1, rx1) = channel::unbounded::<fastq::Record>();
+    let (tx2, rx2) = channel::unbounded::<fastq::Record>();
+    let input_file1 = input[0].clone();
+    let input_file2 = input[1].clone();
+    let output_file1 = output[0].clone();
+    let output_file2 = output[1].clone();
 
     let writer_thread1 = thread::spawn(move || {
-        write_output_file(
-            out_file1,
-            rx1,
-            output_config.compression_mode,
-            output_config.no_compress,
-            output_config.output_fasta,
-        );
+        write_output_file(rx1, output_file1);
+    });
+    let writer_thread2 = thread::spawn(move || {
+        write_output_file(rx2, output_file2);
     });
 
-    let writer_thread2 = thread::spawn(move || {
-        write_output_file(
-            out_file2,
-            rx2,
-            output_config.compression_mode,
-            output_config.no_compress,
-            output_config.output_fasta,
-        );
-    });
     let reader_thread1 = thread::spawn({
         let reads_to_save_arc = reads_to_save.clone();
         move || {
-            parse_fastq(in_buf1, &tx1, reads_to_save_arc, output_config.output_fasta);
+            parse_fastq(&input_file1, reads_to_save_arc, &tx1);
         }
     });
     let reader_thread2 = thread::spawn({
         let reads_to_save_arc = reads_to_save.clone();
         move || {
-            parse_fastq(in_buf2, &tx2, reads_to_save_arc, output_config.output_fasta);
+            parse_fastq(&input_file2, reads_to_save_arc, &tx2);
         }
     });
 
@@ -571,6 +591,23 @@ fn process_paired_end(
     writer_thread2.join().unwrap();
     reader_thread1.join().unwrap();
     reader_thread2.join().unwrap();
+}
+
+fn infer_compression(file_path: &String) -> niffler::compression::Format {
+    let path = Path::new(&file_path);
+    let ext = path.extension().unwrap().to_str().unwrap();
+    trace!(
+        "Detected output compression type for file {:?} as: {:?}",
+        file_path,
+        ext
+    );
+    match ext {
+        "gz" => niffler::compression::Format::Gzip,
+        "bz2" => niffler::compression::Format::Bzip,
+        "lzma" => niffler::compression::Format::Lzma,
+        "zst" => niffler::compression::Format::Zstd,
+        _ => niffler::compression::Format::No,
+    }
 }
 
 fn main() {
@@ -590,51 +627,14 @@ fn main() {
         info!("Detected one input file. Assuming single-end reads");
     }
 
-    // collect the taxon IDs to save and map those to read IDs
+    //collect the taxon IDs to save and map those to read IDs
     let taxon_ids_to_save = collect_taxons_to_save(&args);
     let reads_to_save = process_kraken_output(args.kraken, args.exclude, taxon_ids_to_save);
 
-    //create output config
-    //TODO - can probably refactor this into CLI ?
-    let output_config =
-        OutputConfig::new(args.no_compress, args.compression_level, args.output_fasta);
-
     info!("Processing reads...");
     if !paired {
-        let out_file = match fs::File::create(&args.output[0]) {
-            Ok(out_file) => out_file,
-            Err(_) => {
-                error!("Error opening output1 file for writing");
-                std::process::exit(1);
-            }
-        };
-        let in_buf1 = read_fastq(&args.input[0]);
-        process_single_end(output_config, reads_to_save.clone(), in_buf1, out_file);
+        process_single_end(reads_to_save.clone(), args.input, args.output);
     } else {
-        let in_buf1 = read_fastq(&args.input[0]);
-        let in_buf2 = read_fastq(&args.input[1]);
-
-        let out_file1 = match fs::File::create(&args.output[0]) {
-            Ok(out_file1) => out_file1,
-            Err(_) => {
-                error!("Error opening output2 file for writing");
-                std::process::exit(1);
-            }
-        };
-        let out_file2 = match fs::File::create(&args.output[1]) {
-            Ok(out_file2) => out_file2,
-            Err(_) => {
-                error!("Error opening output2 file for writing");
-                std::process::exit(1);
-            }
-        };
-        process_paired_end(
-            output_config,
-            reads_to_save.clone(),
-            in_buf1,
-            in_buf2,
-            out_file1,
-            out_file2,
-        );
+        process_paired_end(reads_to_save.clone(), args.input, args.output);
     }
 }

@@ -1,5 +1,4 @@
 use clap::Parser;
-use flate2::Compression;
 use log::{debug, error, info, trace, warn};
 
 #[derive(Parser, Debug)]
