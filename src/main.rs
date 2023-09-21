@@ -592,6 +592,7 @@ fn write_output_fasta(rx: Receiver<fastq::Record>, out_file: String) {
 /// * `output` - A vector containing the paths to the output file.
 /// * `output_type` - The compression type to use for the output file.
 /// * `compression_level` - The compression level to use for the output file.
+/// * `fasta` - A boolean indicating whether the output should be in FASTA format.
 fn process_single_end(
     reads_to_save: Arc<HashMap<String, i32>>,
     input: Vec<String>,
@@ -639,6 +640,7 @@ fn process_single_end(
 /// * `output` - A vector containing the paths to the two output files.
 /// * `compression_type` - The compression type to use for the output files.
 /// * `compression_level` - The compression level to use for the output files.
+/// * `fasta` - A boolean indicating whether to output in FASTA format.
 fn process_paired_end(
     reads_to_save: Arc<HashMap<String, i32>>,
     input: Vec<String>,
