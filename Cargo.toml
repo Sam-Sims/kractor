@@ -14,10 +14,10 @@ documentation = "https://docs.rs/crate/krakenxtract/"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+chrono = "0.4.31"
 clap = { version = "4.3.19", features = ["derive"] }
 crossbeam = "0.8.2"
 env_logger = "0.10.0"
-flate2 = {version = "1.0.26", default-features = false, features = ["zlib-ng"]}
 log = "0.4.20"
 niffler = "2.5.0"
 noodles = { version = "0.51.0", features = ["fastq"] }

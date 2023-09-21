@@ -10,21 +10,21 @@ pub struct Cli {
     // Fastq file(s)
     #[arg(short = 'i', long = "input", num_args(0..=2), required = true)]
     pub input: Vec<String>,
-    // Kraken2 output file
-    #[arg(short = 'k', long = "kraken", required = true)]
-    pub kraken: String,
-    // Taxid to extract reads for
-    #[arg(short = 't', long = "taxid", required = true)]
-    pub taxid: i32,
-    // Kraken2 report file
-    #[arg(short = 'r', long = "report")]
-    pub report: Option<String>,
     // Output file(s)
     #[arg(short = 'o', long = "output", num_args(0..=2), required = true)]
     pub output: Vec<String>,
-    // Compression level
-    #[arg(long = "compression-level", default_value = "2")]
-    pub compression_level: u32,
+    // Kraken2 output file
+    #[arg(short = 'k', long = "kraken", required = true)]
+    pub kraken: String,
+    // Kraken2 report file
+    #[arg(short = 'r', long = "report")]
+    pub report: Option<String>,
+    // Taxid to extract reads for
+    #[arg(short = 't', long = "taxid", required = true)]
+    pub taxid: i32,
+    // Compression type
+    // #[arg(short = 'O', long = "output-type")]
+    // pub compression_level: Option<niffler::compression::Format>,
     // Extract reads from parents
     #[arg(long, action)]
     pub parents: bool,
@@ -39,8 +39,11 @@ pub struct Cli {
     #[arg(long)]
     pub exclude: bool,
     // Output reads in FASTA format
-    #[arg(long)]
-    pub output_fasta: bool,
+    // #[arg(long)]
+    // pub output_fasta: bool,
+    // Verbose
+    #[arg(short)]
+    pub verbose: bool,
 }
 
 impl Cli {
