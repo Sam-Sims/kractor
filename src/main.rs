@@ -491,8 +491,17 @@ fn parse_fastq(
 //     out_buf.flush().expect("Error flushing output buffer");
 // }
 
-fn write_output_file(rx: Receiver<fastq::Record>, out_file: String) {
-    let compression_type = infer_compression(&out_file);
+fn write_output_file(
+    rx: Receiver<fastq::Record>,
+    out_file: String,
+    output_type: Option<niffler::Format>,
+) {
+    //if output type has value, use that, otherwise infer from file extension
+    let compression_type = match output_type {
+        Some(output_type) => output_type,
+        None => infer_compression(&out_file),
+    };
+    //let compression_type = infer_compression(&out_file);
     debug!("Creating output file: {:?}", out_file);
     let out_file = match fs::File::create(out_file) {
         Ok(out_file1) => out_file1,
@@ -528,6 +537,7 @@ fn process_single_end(
     //in_buf: io::BufReader<Box<dyn Read + Send>>,
     input: Vec<String>,
     output: Vec<String>,
+    output_type: Option<niffler::Format>,
 ) {
     let (tx, rx) = channel::unbounded::<fastq::Record>();
     let output_file = output[0].clone();
@@ -542,7 +552,7 @@ fn process_single_end(
     let writer_thread = thread::spawn({
         trace!("Spawning writer thread");
         move || {
-            write_output_file(rx, output_file);
+            write_output_file(rx, output_file, output_type);
         }
     });
     reader_thread.join().unwrap();
@@ -569,6 +579,7 @@ fn process_paired_end(
     reads_to_save: Arc<HashMap<String, i32>>,
     input: Vec<String>,
     output: Vec<String>,
+    compression_type: Option<niffler::Format>,
 ) {
     let (tx1, rx1) = channel::unbounded::<fastq::Record>();
     let (tx2, rx2) = channel::unbounded::<fastq::Record>();
@@ -595,13 +606,13 @@ fn process_paired_end(
     let writer_thread1 = thread::spawn({
         trace!("Spawning writer thread 1");
         move || {
-            write_output_file(rx1, output_file1);
+            write_output_file(rx1, output_file1, compression_type);
         }
     });
     let writer_thread2 = thread::spawn({
         trace!("Spawning writer thread 2");
         move || {
-            write_output_file(rx2, output_file2);
+            write_output_file(rx2, output_file2, compression_type);
         }
     });
     reader_thread1.join().unwrap();
@@ -677,10 +688,22 @@ fn main() {
     let taxon_ids_to_save = collect_taxons_to_save(&args);
     let reads_to_save = process_kraken_output(args.kraken, args.exclude, taxon_ids_to_save);
 
+    //check if args.output_type is provided if it is - check if it is valid if not try and infer
+
     info!("Processing reads...");
     if !paired {
-        process_single_end(reads_to_save.clone(), args.input, args.output);
+        process_single_end(
+            reads_to_save.clone(),
+            args.input,
+            args.output,
+            args.output_type,
+        );
     } else {
-        process_paired_end(reads_to_save.clone(), args.input, args.output);
+        process_paired_end(
+            reads_to_save.clone(),
+            args.input,
+            args.output,
+            args.output_type,
+        );
     }
 }

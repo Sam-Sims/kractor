@@ -23,18 +23,14 @@ pub struct Cli {
     #[arg(short = 't', long = "taxid", required = true)]
     pub taxid: i32,
     // Compression type
-    // #[arg(short = 'O', long = "output-type")]
-    // pub compression_level: Option<niffler::compression::Format>,
+    #[arg(short = 'O', long = "output-type", value_parser(parse_compression))]
+    pub output_type: Option<niffler::compression::Format>,
     // Extract reads from parents
     #[arg(long, action)]
     pub parents: bool,
     // Extract reads from children
     #[arg(long, action)]
     pub children: bool,
-    //TODO - Infer output format from file extension
-    // Dont compress output
-    #[arg(long)]
-    pub no_compress: bool,
     // Exclude reads matching taxid
     #[arg(long)]
     pub exclude: bool,
@@ -66,5 +62,16 @@ impl Cli {
             error!("One input file specified but two output files specified.");
             std::process::exit(1);
         }
+    }
+}
+
+fn parse_compression(s: &str) -> Result<niffler::compression::Format, String> {
+    match s {
+        "g" => Ok(niffler::compression::Format::Gzip),
+        "b" => Ok(niffler::compression::Format::Bzip),
+        "l" => Ok(niffler::compression::Format::Lzma),
+        "z" => Ok(niffler::compression::Format::Zstd),
+        "u" => Ok(niffler::compression::Format::No),
+        _ => Err(format!("Unknown compression type: {}", s)),
     }
 }
