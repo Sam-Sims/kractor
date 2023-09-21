@@ -357,18 +357,6 @@ fn collect_taxons_to_save(args: &Cli) -> Vec<i32> {
     taxon_ids_to_save
 }
 
-/// Parse a FASTQ file and send reads to writer thread.
-///
-/// This function reads a fastq file and extracts read IDs and sequences.
-/// It compares the read IDs against a given HashMap of read IDs (`reads_to_save`) and sends
-/// the sequences of matching read IDs to the writer thread.
-///
-/// # Arguments
-///
-/// * `in_buf` - A buffered reader for the Fastq file.
-/// * `tx` - A channel sender for sending sequences of selected reads.
-/// * `reads_to_save` - A HashMap containing read IDs and corresponding taxon IDs.
-/// * `output_fasta` - A boolean flag indicating whether to format the output as FASTA (true) or not (false).
 // fn parse_fastq(
 //     in_buf: io::BufReader<Box<dyn Read + Send>>,
 //     tx: &Sender<Vec<u8>>,
@@ -418,6 +406,17 @@ fn collect_taxons_to_save(args: &Cli) -> Vec<i32> {
 //     }
 // }
 
+/// Parse a FASTQ file and send reads to writer thread.
+///
+/// This function reads a fastq file and extracts read IDs and sequences.
+/// It compares the read IDs against a given HashMap of read IDs (`reads_to_save`) and sends
+/// the sequences of matching read IDs to the writer thread.
+///
+/// # Arguments
+///
+/// * `file_path` - A string containing the path to the FASTQ file.
+/// * `reads_to_save` - A HashMap containing read IDs and their associated taxon IDs.
+/// * `tx` - A Sender channel to send the parsed reads to the writer thread.
 fn parse_fastq(
     file_path: &str,
     reads_to_save: Arc<HashMap<String, i32>>,
@@ -454,18 +453,6 @@ fn parse_fastq(
     }
 }
 
-/// Write fastq data to output file
-///
-/// This function takes received data from the provided Receiver channel corresponding to an inputfile and writes it to the specified output
-/// file to an output file, optionally applying compression.
-///
-/// # Arguments
-///
-/// * `out_file`: A file representing the output file where data will be written.
-/// * `rx`: A Receiver from which parsed fastq lines will be received.
-/// * `compression_mode`: A Compression enum representing the compression mode to apply when writing data.
-/// * `no_compress`: A boolean flag indicating whether to skip compression (true) or apply it (false).
-/// * `output_fasta`: A boolean flag indicating whether to format the output as FASTA (true) or not (false).
 // fn write_output_file(
 //     out_file: fs::File,
 //     rx: Receiver<Vec<u8>>,
@@ -491,17 +478,39 @@ fn parse_fastq(
 //     out_buf.flush().expect("Error flushing output buffer");
 // }
 
+/// Write fastq data to output file
+///
+/// This function takes received data from the provided Receiver channel corresponding to an inputfile and writes it to the specified output
+/// file to an output file, optionally applying compression.
+///
+/// # Arguments
+///
+/// * `rx`: A Receiver from which parsed fastq lines will be received.
+/// * `out_file`: A file representing the output file where data will be written.
+/// * `output_type`: The compression type to use for the output file.
+/// * `compression_level`: The compression level to use for the output file.
 fn write_output_file(
     rx: Receiver<fastq::Record>,
     out_file: String,
     output_type: Option<niffler::Format>,
+    compression_level: niffler::Level,
 ) {
     //if output type has value, use that, otherwise infer from file extension
     let compression_type = match output_type {
-        Some(output_type) => output_type,
-        None => infer_compression(&out_file),
+        Some(output_type) => {
+            debug!("Output type overridden as: {:?}", output_type);
+            output_type
+        }
+        None => {
+            let inferred_type = infer_compression(&out_file);
+            debug!("Inferred output compression type as: {:?}", inferred_type);
+            inferred_type
+        }
     };
-    //let compression_type = infer_compression(&out_file);
+    debug!(
+        "Output compression level specified as: {:?}",
+        compression_level
+    );
     debug!("Creating output file: {:?}", out_file);
     let out_file = match fs::File::create(out_file) {
         Ok(out_file1) => out_file1,
@@ -512,7 +521,7 @@ fn write_output_file(
     };
 
     let file_handle = Box::new(io::BufWriter::new(out_file));
-    let writer = niffler::get_writer(file_handle, compression_type, niffler::Level::Two).unwrap();
+    let writer = niffler::get_writer(file_handle, compression_type, compression_level).unwrap();
 
     let mut fastq_writer = fastq::Writer::new(writer);
     for record in rx {
@@ -528,16 +537,17 @@ fn write_output_file(
 ///
 /// # Arguments
 ///
-/// * `output_config` - The configuration for output options, including compression and output types.
 /// * `reads_to_save` - A HashMap containing read IDs and their associated taxon IDs.
-/// * `in_buf` - A buffered reader wrapping the FASTQ file input.
-/// * `out_file` - The output file where selected reads will be written.
+/// * `input` - A vector containing the paths to the input file.
+/// * `output` - A vector containing the paths to the output file.
+/// * `output_type` - The compression type to use for the output file.
+/// * `compression_level` - The compression level to use for the output file.
 fn process_single_end(
     reads_to_save: Arc<HashMap<String, i32>>,
-    //in_buf: io::BufReader<Box<dyn Read + Send>>,
     input: Vec<String>,
     output: Vec<String>,
     output_type: Option<niffler::Format>,
+    compression_level: niffler::Level,
 ) {
     let (tx, rx) = channel::unbounded::<fastq::Record>();
     let output_file = output[0].clone();
@@ -552,7 +562,7 @@ fn process_single_end(
     let writer_thread = thread::spawn({
         trace!("Spawning writer thread");
         move || {
-            write_output_file(rx, output_file, output_type);
+            write_output_file(rx, output_file, output_type, compression_level);
         }
     });
     reader_thread.join().unwrap();
@@ -569,17 +579,17 @@ fn process_single_end(
 ///
 /// # Arguments
 ///
-/// * `output_config` - The configuration for output options, including compression and formatting settings.
 /// * `reads_to_save` - A HashMap containing read IDs and their associated taxon IDs.
-/// * `in_buf1` - A buffered reader wrapping the first input FASTQ file.
-/// * `in_buf2` - A buffered reader wrapping the second input FASTQ file.
-/// * `out_file1` - The output file for the first set of selected reads.
-/// * `out_file2` - The output file for the second set of selected reads.
+/// * `input` - A vector containing the paths to the two input files.
+/// * `output` - A vector containing the paths to the two output files.
+/// * `compression_type` - The compression type to use for the output files.
+/// * `compression_level` - The compression level to use for the output files.
 fn process_paired_end(
     reads_to_save: Arc<HashMap<String, i32>>,
     input: Vec<String>,
     output: Vec<String>,
     compression_type: Option<niffler::Format>,
+    compression_level: niffler::Level,
 ) {
     let (tx1, rx1) = channel::unbounded::<fastq::Record>();
     let (tx2, rx2) = channel::unbounded::<fastq::Record>();
@@ -606,13 +616,13 @@ fn process_paired_end(
     let writer_thread1 = thread::spawn({
         trace!("Spawning writer thread 1");
         move || {
-            write_output_file(rx1, output_file1, compression_type);
+            write_output_file(rx1, output_file1, compression_type, compression_level);
         }
     });
     let writer_thread2 = thread::spawn({
         trace!("Spawning writer thread 2");
         move || {
-            write_output_file(rx2, output_file2, compression_type);
+            write_output_file(rx2, output_file2, compression_type, compression_level);
         }
     });
     reader_thread1.join().unwrap();
@@ -623,13 +633,22 @@ fn process_paired_end(
     info!("Writing complete.");
 }
 
+/// Infer the compression format from a file path based on its extension.
+///
+/// This function takes a file path as input and checks its file extension to determine
+/// the compression format. It supports all niffler compression  types
+/// If the extension is not recognized, it defaults to no compression.
+///
+/// # Arguments
+///
+/// * `file_path` - A reference to a `String` containing the file path to analyze.
+///
+/// # Returns
+///
+/// Niffler compression format.
 fn infer_compression(file_path: &String) -> niffler::compression::Format {
     let path = Path::new(&file_path);
     let ext = path.extension().unwrap().to_str().unwrap();
-    debug!(
-        "Inferred output compression type for file {:?} as: {:?}",
-        file_path, ext
-    );
     match ext {
         "gz" => niffler::compression::Format::Gzip,
         "bz2" => niffler::compression::Format::Bzip,
@@ -639,6 +658,14 @@ fn infer_compression(file_path: &String) -> niffler::compression::Format {
     }
 }
 
+/// Initializes and configures the logger.
+///
+/// This function sets up the logger for the application When verbosity is enabled, log messages
+/// at the `Debug` level and above are output, else "Info" level is output.
+///
+/// # Arguments
+///
+/// * `verbose` - A boolean flag indicating whether verbose logging should be enabled.
 fn logger(verbose: bool) {
     let level_filter = if verbose {
         LevelFilter::Debug
@@ -671,39 +698,36 @@ fn logger(verbose: bool) {
 
 fn main() {
     let args = Cli::parse();
+
     //init logging
     logger(args.verbose);
 
+    //Validate input/output args
     args.validate_input();
-
-    //check if paired-end reads are provided
-    let paired = args.input.len() == 2;
-    if paired {
-        info!("Detected two input files. Assuming paired-end reads");
-    } else {
-        info!("Detected one input file. Assuming single-end reads");
-    }
 
     //collect the taxon IDs to save and map those to read IDs
     let taxon_ids_to_save = collect_taxons_to_save(&args);
     let reads_to_save = process_kraken_output(args.kraken, args.exclude, taxon_ids_to_save);
 
-    //check if args.output_type is provided if it is - check if it is valid if not try and infer
-
-    info!("Processing reads...");
-    if !paired {
-        process_single_end(
-            reads_to_save.clone(),
-            args.input,
-            args.output,
-            args.output_type,
-        );
-    } else {
+    //check if paired-end reads are provided
+    let paired = args.input.len() == 2;
+    if paired {
+        info!("Detected two input files. Assuming paired-end reads");
         process_paired_end(
             reads_to_save.clone(),
             args.input,
             args.output,
             args.output_type,
+            args.compression_level,
+        );
+    } else {
+        info!("Detected one input file. Assuming single-end reads");
+        process_single_end(
+            reads_to_save.clone(),
+            args.input,
+            args.output,
+            args.output_type,
+            args.compression_level,
         );
     }
 }
