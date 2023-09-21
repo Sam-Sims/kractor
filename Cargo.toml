@@ -19,7 +19,7 @@ clap = { version = "4.3.19", features = ["derive"] }
 crossbeam = "0.8.2"
 env_logger = "0.10.0"
 log = "0.4.20"
-niffler = "2.5.0"
+niffler = { version = "2.5.0", features = ["gz_cloudflare_zlib"] }
 noodles = { version = "0.51.0", features = ["fastq"] }
 
 
