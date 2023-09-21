@@ -7,7 +7,7 @@ use log::{debug, error, info, trace, warn, LevelFilter};
 use noodles::{
     fasta::{
         self,
-        record::{definition, Definition, Sequence},
+        record::{Definition, Sequence},
     },
     fastq,
 };
@@ -16,7 +16,6 @@ use std::{
     fs::{self},
     io::{self, prelude::*, BufReader},
     path::Path,
-    result,
     sync::Arc,
     thread,
     time::{Duration, Instant},
@@ -597,7 +596,7 @@ fn process_single_end(
     reads_to_save: Arc<HashMap<String, i32>>,
     input: Vec<String>,
     output: Vec<String>,
-    output_type: Option<niffler::Format>,
+    compression_type: Option<niffler::Format>,
     compression_level: niffler::Level,
     fasta: bool,
 ) {
@@ -615,7 +614,7 @@ fn process_single_end(
         trace!("Spawning writer thread");
         move || {
             if !fasta {
-                write_output_fastq(rx, output_file, output_type, compression_level);
+                write_output_fastq(rx, output_file, compression_type, compression_level);
             } else {
                 write_output_fasta(rx, output_file);
             }
@@ -673,13 +672,21 @@ fn process_paired_end(
     let writer_thread1 = thread::spawn({
         trace!("Spawning writer thread 1");
         move || {
-            write_output_fastq(rx1, output_file1, compression_type, compression_level);
+            if !fasta {
+                write_output_fastq(rx1, output_file1, compression_type, compression_level);
+            } else {
+                write_output_fasta(rx1, output_file1);
+            }
         }
     });
     let writer_thread2 = thread::spawn({
         trace!("Spawning writer thread 2");
         move || {
-            write_output_fastq(rx2, output_file2, compression_type, compression_level);
+            if !fasta {
+                write_output_fastq(rx2, output_file2, compression_type, compression_level);
+            } else {
+                write_output_fasta(rx2, output_file2);
+            }
         }
     });
     reader_thread1.join().unwrap();
