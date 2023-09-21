@@ -4,12 +4,19 @@ use clap::Parser;
 use crossbeam::channel::{self, Receiver, Sender};
 use env_logger::{fmt::Color, Builder};
 use log::{debug, error, info, trace, warn, LevelFilter};
-use noodles::fastq;
+use noodles::{
+    fasta::{
+        self,
+        record::{definition, Definition, Sequence},
+    },
+    fastq,
+};
 use std::{
     collections::HashMap,
     fs::{self},
     io::{self, prelude::*, BufReader},
     path::Path,
+    result,
     sync::Arc,
     thread,
     time::{Duration, Instant},
@@ -478,6 +485,31 @@ fn parse_fastq(
 //     out_buf.flush().expect("Error flushing output buffer");
 // }
 
+/// Infer the compression format from a file path based on its extension.
+///
+/// This function takes a file path as input and checks its file extension to determine
+/// the compression format. It supports all niffler compression  types
+/// If the extension is not recognized, it defaults to no compression.
+///
+/// # Arguments
+///
+/// * `file_path` - A reference to a `String` containing the file path to analyze.
+///
+/// # Returns
+///
+/// Niffler compression format.
+fn infer_compression(file_path: &String) -> niffler::compression::Format {
+    let path = Path::new(&file_path);
+    let ext = path.extension().unwrap().to_str().unwrap();
+    match ext {
+        "gz" => niffler::compression::Format::Gzip,
+        "bz2" => niffler::compression::Format::Bzip,
+        "lzma" => niffler::compression::Format::Lzma,
+        "zst" => niffler::compression::Format::Zstd,
+        _ => niffler::compression::Format::No,
+    }
+}
+
 /// Write fastq data to output file
 ///
 /// This function takes received data from the provided Receiver channel corresponding to an inputfile and writes it to the specified output
@@ -489,7 +521,7 @@ fn parse_fastq(
 /// * `out_file`: A file representing the output file where data will be written.
 /// * `output_type`: The compression type to use for the output file.
 /// * `compression_level`: The compression level to use for the output file.
-fn write_output_file(
+fn write_output_fastq(
     rx: Receiver<fastq::Record>,
     out_file: String,
     output_type: Option<niffler::Format>,
@@ -529,6 +561,25 @@ fn write_output_file(
     }
 }
 
+fn write_output_fasta(rx: Receiver<fastq::Record>, out_file: String) {
+    debug!("Creating output file: {:?}", out_file);
+    let out_file = match fs::File::create(out_file) {
+        Ok(out_file1) => out_file1,
+        Err(_) => {
+            error!("Error opening output2 file for writing");
+            std::process::exit(1);
+        }
+    };
+    let mut writer = fasta::Writer::new(out_file);
+    for record in rx {
+        let definition = Definition::new(std::str::from_utf8(record.name()).unwrap(), None);
+        let sequence = Sequence::from(Vec::from(record.sequence()));
+        writer
+            .write_record(&fasta::Record::new(definition, sequence))
+            .unwrap();
+    }
+}
+
 /// Process single-end reads from a FASTQ file.
 ///
 /// This function runs the processing of single-end reads from a FASTQ file.
@@ -548,6 +599,7 @@ fn process_single_end(
     output: Vec<String>,
     output_type: Option<niffler::Format>,
     compression_level: niffler::Level,
+    fasta: bool,
 ) {
     let (tx, rx) = channel::unbounded::<fastq::Record>();
     let output_file = output[0].clone();
@@ -562,7 +614,11 @@ fn process_single_end(
     let writer_thread = thread::spawn({
         trace!("Spawning writer thread");
         move || {
-            write_output_file(rx, output_file, output_type, compression_level);
+            if !fasta {
+                write_output_fastq(rx, output_file, output_type, compression_level);
+            } else {
+                write_output_fasta(rx, output_file);
+            }
         }
     });
     reader_thread.join().unwrap();
@@ -590,6 +646,7 @@ fn process_paired_end(
     output: Vec<String>,
     compression_type: Option<niffler::Format>,
     compression_level: niffler::Level,
+    fasta: bool,
 ) {
     let (tx1, rx1) = channel::unbounded::<fastq::Record>();
     let (tx2, rx2) = channel::unbounded::<fastq::Record>();
@@ -616,13 +673,13 @@ fn process_paired_end(
     let writer_thread1 = thread::spawn({
         trace!("Spawning writer thread 1");
         move || {
-            write_output_file(rx1, output_file1, compression_type, compression_level);
+            write_output_fastq(rx1, output_file1, compression_type, compression_level);
         }
     });
     let writer_thread2 = thread::spawn({
         trace!("Spawning writer thread 2");
         move || {
-            write_output_file(rx2, output_file2, compression_type, compression_level);
+            write_output_fastq(rx2, output_file2, compression_type, compression_level);
         }
     });
     reader_thread1.join().unwrap();
@@ -631,31 +688,6 @@ fn process_paired_end(
     writer_thread1.join().unwrap();
     writer_thread2.join().unwrap();
     info!("Writing complete.");
-}
-
-/// Infer the compression format from a file path based on its extension.
-///
-/// This function takes a file path as input and checks its file extension to determine
-/// the compression format. It supports all niffler compression  types
-/// If the extension is not recognized, it defaults to no compression.
-///
-/// # Arguments
-///
-/// * `file_path` - A reference to a `String` containing the file path to analyze.
-///
-/// # Returns
-///
-/// Niffler compression format.
-fn infer_compression(file_path: &String) -> niffler::compression::Format {
-    let path = Path::new(&file_path);
-    let ext = path.extension().unwrap().to_str().unwrap();
-    match ext {
-        "gz" => niffler::compression::Format::Gzip,
-        "bz2" => niffler::compression::Format::Bzip,
-        "lzma" => niffler::compression::Format::Lzma,
-        "zst" => niffler::compression::Format::Zstd,
-        _ => niffler::compression::Format::No,
-    }
 }
 
 /// Initializes and configures the logger.
@@ -719,6 +751,7 @@ fn main() {
             args.output,
             args.output_type,
             args.compression_level,
+            args.output_fasta,
         );
     } else {
         info!("Detected one input file. Assuming single-end reads");
@@ -728,6 +761,7 @@ fn main() {
             args.output,
             args.output_type,
             args.compression_level,
+            args.output_fasta,
         );
     }
 }

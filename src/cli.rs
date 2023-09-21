@@ -23,7 +23,7 @@ pub struct Cli {
     #[arg(short = 't', long = "taxid", required = true)]
     pub taxid: i32,
     // Compression type
-    #[arg(short = 'O', long = "output-type", value_parser(validate_compression))]
+    #[arg(short = 'O', long = "compression-type", value_parser(validate_compression))]
     pub output_type: Option<niffler::compression::Format>,
     //Compression level
     #[arg(
@@ -43,8 +43,8 @@ pub struct Cli {
     #[arg(long)]
     pub exclude: bool,
     // Output reads in FASTA format
-    // #[arg(long)]
-    // pub output_fasta: bool,
+    #[arg(long, action)]
+    pub output_fasta: bool,
     // Verbose
     #[arg(short)]
     pub verbose: bool,
