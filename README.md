@@ -8,28 +8,30 @@
 Extract reads from a FASTQ file based on taxonomic classification via Kraken2.
 
 
-## Motivation
+# Motivation
 
 Heavily inspired by the great [KrakenTools](https://github.com/jenniferlu717/KrakenTools). 
 
-Having been wanting to experiment with Rust for a while, this is essentially an implementation of the `extract_kraken_reads.py` script, [re-implemented](https://www.reddit.com/media?url=https%3A%2F%2Fi.redd.it%2Fgood-for-you-crab-v0-5v9ygeh9r1c91.jpg%3Fs%3Dd759db5275e32c6e2bd5c22bddbd783acca46247) in Rust. The main motivation was to provide a speedup when extracting a large number of reads from large FASTQ files - and to learn Rust!
+Having been wanting to experiment with Rust for a while, this is essentially an implementation of the `extract_kraken_reads.py` script, [re-implemented](https://www.reddit.com/media?url=https%3A%2F%2Fi.redd.it%2Fgood-for-you-crab-v0-5v9ygeh9r1c91.jpg%3Fs%3Dd759db5275e32c6e2bd5c22bddbd783acca46247) in Rust. 
+
+The main motivation was to provide a speedup when extracting a large number of reads from large FASTQ files - and to learn Rust!
 
 This is currently an early implementation, with plans to expand functionality.
 
-## Current features
+# Current features
 
 - Extract all reads from a `fastq` file based on a taxonomic id
 - Extract all the parents or the children of the specified taxon id
-- Supports single or paired end `fastq` files
+- Supports single or paired-end `fastq` files
 - Supports both uncompressed or `gzip` inputs and outputs.
 - Multithreaded
 - ~4.4x speed up compared to KrakenTools
 
-### Benchmarks (WIP)
+## Benchmarks (WIP)
 
 For more detail see [benchmarks](benchmarks/benchmarks.md)
 
-## Installation
+# Installation
 
 Download the latest release from GitHub.
 
@@ -54,9 +56,9 @@ export PATH=$PATH:$(pwd)/target/release
 
 All executables will be in the directory kraken-extract/target/release.
 
-## Usage
+# Usage
 
-### Basic Usage:
+## Basic Usage:
 
 ```bash
 krakenXtract -k <kraken_output> -i <fastq_file> -t <taxonomic_id> -o <output_file>
@@ -66,8 +68,8 @@ Or, if you have paired-end illumina reads:
 krakenXtract -k <kraken_output> -i <R1_fastq_file> -i <R2_fastq_file> -t <taxonomic_id> -o <R1_output_file> -o <R2_output_file>
 ```
 
-### Detailed Usage:
-#### Required:
+## Detailed Usage:
+### Required:
 **Input**
 
 `-i, --input`
@@ -100,7 +102,7 @@ This option will specify the path to the Kraken2 output containing taxonomic cla
 
 This option will specify the taxon ID for reads you want to extract.
 
-#### Optional:
+### Optional:
 
 **Output type**
 
