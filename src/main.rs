@@ -1,12 +1,27 @@
+pub use crate::cli::Cli;
+use chrono::Local;
 use clap::Parser;
-use flate2::{read::GzDecoder, write::GzEncoder, Compression};
+use crossbeam::channel::{self, Receiver, Sender};
+use env_logger::{fmt::Color, Builder};
+use log::{debug, error, info, trace, warn, LevelFilter};
+use noodles::{
+    fasta::{
+        self,
+        record::{Definition, Sequence},
+    },
+    fastq,
+};
 use std::{
     collections::HashMap,
     fs::{self},
-    io::{self, prelude::*, BufWriter},
-    sync::mpsc::{channel, Sender},
+    io::{self, prelude::*, BufReader},
+    path::Path,
+    sync::Arc,
     thread,
+    time::{Duration, Instant},
 };
+
+mod cli;
 
 #[derive(Debug, Clone)]
 struct Tree {
@@ -27,34 +42,6 @@ impl Tree {
     }
 }
 
-#[derive(Parser, Debug)]
-#[command(
-    version,
-    about = "Extract reads from a FASTQ file based on taxonomic classification via Kraken2."
-)]
-struct Args {
-    #[arg(short, long)]
-    kraken: String,
-    #[arg(short, long)]
-    taxid: i32,
-    #[arg(short, long)]
-    report: Option<String>,
-    #[arg(short, long)]
-    fastq: String,
-    #[arg(short, long)]
-    output: String,
-    #[arg(long, default_value = "fast")]
-    compression_mode: Option<String>,
-    #[arg(long, action)]
-    parents: bool,
-    #[arg(long, action)]
-    children: bool,
-    #[arg(long)]
-    no_compress: bool,
-    #[arg(long)]
-    exclude: bool,
-}
-
 /// Reads a FASTQ file from the specified path and returns a buffered reader.
 ///
 /// This function reads a FASTQ file from the given path and returns a buffered reader
@@ -68,35 +55,39 @@ struct Args {
 ///
 /// A buffered reader containing the contents of the FASTQ file. The reader may be a
 /// plain text reader or a gzip decompressor, depending on the file format.
-fn read_fastq(path: &str) -> io::BufReader<Box<dyn io::Read>> {
-    // The gzip magic number is 0x1f8b
-    const GZIP_MAGIC_NUMBER: [u8; 2] = [0x1f, 0x8b];
+// fn read_fastq(path: &str) -> BufReader<Box<dyn io::Read + Send>> {
+//     // The gzip magic number is 0x1f8b
+//     const GZIP_MAGIC_NUMBER: [u8; 2] = [0x1f, 0x8b];
 
-    let mut file = if let Ok(file) = fs::File::open(path) {
-        file
-    } else {
-        panic!("Error opening or reading the file");
-    };
+//     let mut file = match fs::File::open(path) {
+//         Ok(file) => file,
+//         Err(_) => {
+//             error!("Error opening fastq file");
+//             std::process::exit(1);
+//         }
+//     };
 
-    // Buffer to store the first two bytes of the file
-    let mut buffer = [0u8; 2];
+//     // Buffer to store the first two bytes of the file
+//     let mut buffer = [0u8; 2];
 
-    if let Ok(size) = file.read(&mut buffer) {
-        // reset the pointer back to the start
-        file.seek(io::SeekFrom::Start(0)).ok();
-        // check if the first two bytes match the gzip magic number => file is gzipped
-        // otherwise, it's a plain text file
-        if size == 2 && buffer == GZIP_MAGIC_NUMBER {
-            let gzip_reader: Box<dyn io::Read> = Box::new(GzDecoder::new(file));
-            io::BufReader::new(gzip_reader)
-        } else {
-            let plain_reader: Box<dyn io::Read> = Box::new(file);
-            io::BufReader::new(plain_reader)
-        }
-    } else {
-        panic!("Error reading from the file");
-    }
-}
+//     if let Ok(size) = file.read(&mut buffer) {
+//         // reset the pointer back to the start
+//         file.seek(io::SeekFrom::Start(0)).ok();
+//         // check if the first two bytes match the gzip magic number => file is gzipped
+//         // otherwise, it's a plain text file
+//         if size == 2 && buffer == GZIP_MAGIC_NUMBER {
+//             trace!("Detected gzipped file");
+//             let gzip_reader: Box<dyn io::Read + Send> = Box::new(GzDecoder::new(file));
+//             io::BufReader::new(gzip_reader)
+//         } else {
+//             trace!("Detected plain text file");
+//             let plain_reader: Box<dyn io::Read + Send> = Box::new(file);
+//             io::BufReader::new(plain_reader)
+//         }
+//     } else {
+//         panic!("Error reading from the file");
+//     }
+// }
 
 /// Parses a Kraken output line to extract taxon ID and read ID.
 ///
@@ -135,13 +126,20 @@ fn process_kraken_output(
     kraken_path: String,
     exclude: bool,
     taxon_ids_to_save: Vec<i32>,
-) -> HashMap<String, i32> {
+) -> Arc<HashMap<String, i32>> {
+    info!("Processing kraken output...");
     let mut reads_to_save = HashMap::new();
-    let kraken_file = fs::File::open(kraken_path).expect("Error reading kraken output file");
+    //let kraken_file = fs::File::open(kraken_path).expect("Error reading kraken output file");
+    let kraken_file = match fs::File::open(kraken_path) {
+        Ok(kraken_file) => kraken_file,
+        Err(_) => {
+            error!("Error opening kraken output file");
+            std::process::exit(1);
+        }
+    };
     let reader = io::BufReader::new(kraken_file);
     let mut total_reads = 0;
 
-    print!("  Processing kraken output...");
     io::stdout().flush().unwrap();
     for line_result in reader.lines() {
         let line = line_result.expect("Error reading kraken output line");
@@ -155,13 +153,13 @@ fn process_kraken_output(
         }
         total_reads += 1;
     }
-    println!("Done!");
-    println!("  {} taxon IDs identified", taxon_ids_to_save.len());
-    println!(
-        "  {} total reads | {} reads to save.",
+    info!("{} taxon IDs identified", taxon_ids_to_save.len());
+    info!(
+        "{} total reads | {} reads to extract.",
         total_reads,
         reads_to_save.len()
     );
+    let reads_to_save: Arc<HashMap<String, i32>> = Arc::new(reads_to_save);
     reads_to_save
 }
 
@@ -264,16 +262,20 @@ fn build_tree_from_kraken_report(
     taxon_to_save: i32,
     report_path: String,
 ) -> (Vec<Tree>, HashMap<i32, usize>) {
+    debug!("Building taxonomic tree from kraken report");
     // will store the tree
     let mut nodes = Vec::new();
     // taxonid -> index in the nodes vector
     let mut taxon_map = HashMap::new();
 
-    let report_file = if let Ok(report_file) = fs::File::open(report_path) {
-        report_file
-    } else {
-        panic!("Error opening or reading the file");
+    let report_file = match fs::File::open(report_path) {
+        Ok(report_file) => report_file,
+        Err(_) => {
+            error!("Error opening kraken report file");
+            std::process::exit(1);
+        }
     };
+
     {
         let reader = io::BufReader::new(report_file);
         let mut prev_index = None;
@@ -333,28 +335,83 @@ fn build_tree_from_kraken_report(
 /// # Returns
 ///
 /// A vector of taxon IDs that need to be saved.
-fn collect_taxons_to_save(args: &Args) -> Vec<i32> {
+fn collect_taxons_to_save(args: &Cli) -> Vec<i32> {
+    //TODO refactor this not to use the entire args struct
     let mut taxon_ids_to_save = Vec::new();
     if args.report.is_some() {
-        print!("  Processing kraken report...");
-        io::stdout().flush().unwrap();
+        info!("Processing kraken report...");
         let report_path = args.report.clone().unwrap();
         let (nodes, taxon_map) = build_tree_from_kraken_report(args.taxid, report_path);
         if args.children {
+            debug!("Extracting children");
             let mut children = Vec::new();
             extract_children(&nodes, taxon_map[&args.taxid], &mut children);
             taxon_ids_to_save.extend(&children);
         } else if args.parents {
+            debug!("Extracting parents");
             taxon_ids_to_save.extend(extract_parents(&taxon_map, &nodes, args.taxid));
         } else {
             taxon_ids_to_save.push(args.taxid);
         }
-        println!("Done!");
     } else {
+        debug!(
+            "No kraken report provided - extracting reads for taxon ID {} only",
+            args.taxid
+        );
         taxon_ids_to_save.push(args.taxid);
     }
+    debug!("Taxon IDs identified: {:?}", taxon_ids_to_save);
     taxon_ids_to_save
 }
+
+// fn parse_fastq(
+//     in_buf: io::BufReader<Box<dyn Read + Send>>,
+//     tx: &Sender<Vec<u8>>,
+//     reads_to_save: Arc<HashMap<String, i32>>,
+//     output_fasta: bool,
+// ) {
+//     let mut num_lines = 0;
+//     let mut num_reads = 0;
+//     let mut current_id: String = String::new();
+//     //let mut stdout = BufWriter::new(io::stdout().lock());
+//     let mut line_bytes = Vec::new();
+//     let mut last_progress_update = Instant::now(); // For throttling progress updates
+//     const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_millis(1500);
+
+//     for line in in_buf.lines() {
+//         let line = line.expect("Error reading fastq line");
+//         line_bytes.clear();
+//         line_bytes.extend_from_slice(line.as_bytes());
+//         num_lines += 1;
+
+//         if num_lines % 4 == 1 {
+//             let fields: Vec<&str> = line.split_whitespace().collect();
+//             let read_id = &fields[0][1..];
+//             current_id = read_id.to_string();
+//             num_reads += 1;
+//         }
+//         if reads_to_save.contains_key(&current_id) {
+//             if output_fasta {
+//                 match num_lines % 4 {
+//                     1 => {
+//                         let fasta_header = format!("> {}", current_id);
+//                         tx.send(fasta_header.as_bytes().to_vec()).unwrap();
+//                     }
+//                     2 => tx.send(line_bytes.to_vec()).unwrap(),
+//                     _ => (),
+//                 }
+//             } else {
+//                 tx.send(line_bytes.to_vec()).unwrap();
+//             }
+//         }
+//         // Throttle progress updates - need to fix for multi-threading
+//         if last_progress_update.elapsed() >= PROGRESS_UPDATE_INTERVAL {
+//             trace!("Processed {} reads", num_reads);
+//             last_progress_update = Instant::now();
+//             //io::stdout().flush().unwrap();
+//         }
+//     }
+// }
 
 /// Parse a FASTQ file and send reads to writer thread.
 ///
@@ -364,90 +421,379 @@ fn collect_taxons_to_save(args: &Args) -> Vec<i32> {
 ///
 /// # Arguments
 ///
-/// * `in_buf` - A buffered reader for the Fastq file.
-/// * `tx` - A channel sender for sending sequences of selected reads.
-/// * `reads_to_save` - A HashMap containing read IDs and corresponding taxon IDs.
+/// * `file_path` - A string containing the path to the FASTQ file.
+/// * `reads_to_save` - A HashMap containing read IDs and their associated taxon IDs.
+/// * `tx` - A Sender channel to send the parsed reads to the writer thread.
 fn parse_fastq(
-    in_buf: io::BufReader<Box<dyn Read>>,
-    tx: &Sender<Vec<u8>>,
-    reads_to_save: HashMap<String, i32>,
+    file_path: &str,
+    reads_to_save: Arc<HashMap<String, i32>>,
+    tx: &Sender<fastq::Record>,
 ) {
-    let mut num_lines = 0;
     let mut num_reads = 0;
-    let mut current_id: String = String::new();
-    let mut stdout = BufWriter::new(io::stdout().lock());
-    let mut line_bytes = Vec::new();
 
-    println!("  Reading fastq:");
+    let mut last_progress_update = Instant::now();
+    const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_millis(1500);
 
-    for line in in_buf.lines() {
-        let line = line.expect("Error reading fastq line");
-        line_bytes.clear();
-        //let line_bytes = line.as_bytes();
-        line_bytes.extend_from_slice(line.as_bytes());
-        num_lines += 1;
-
-        if num_lines % 4 == 1 {
-            let fields: Vec<&str> = line.split_whitespace().collect();
-            let read_id = &fields[0][1..];
-            current_id = read_id.to_string();
-            num_reads += 1;
+    let (reader, format) = match niffler::from_path(file_path) {
+        Ok(result) => result,
+        Err(e) => {
+            error!("Error opening file: {}", e);
+            std::process::exit(1);
         }
+    };
+    debug!(
+        "Detected input compression type for file {:?} as: {:?}",
+        file_path, format
+    );
+    let reader = BufReader::new(reader);
+    let mut fastq_reader = fastq::Reader::new(reader);
 
-        if reads_to_save.contains_key(&current_id) {
-            tx.send(line_bytes.to_vec()).unwrap();
-            write!(stdout, "  Processed {} reads\r", num_reads).unwrap();
-            //stdout.flush().unwrap();
+    for result in fastq_reader.records() {
+        //todo might be able to make this more efficient by not converting to string
+        let record = result.unwrap();
+        let read_name_bytes = record.name();
+        let read_name_string = std::str::from_utf8(read_name_bytes);
+        if reads_to_save.contains_key(&read_name_string.unwrap().to_string()) {
+            tx.send(record).unwrap();
+        }
+        num_reads += 1;
+        //TODO - fix for paired end?
+        if last_progress_update.elapsed() >= PROGRESS_UPDATE_INTERVAL {
+            trace!("Processed {} reads", num_reads);
+            last_progress_update = Instant::now();
+            //io::stdout().flush().unwrap();
         }
     }
 }
-fn main() {
-    let args = Args::parse();
-    let compression_mode = match args.compression_mode.as_deref() {
-        Some("fast") => Compression::fast(),
-        Some("default") => Compression::default(),
-        Some("best") => Compression::best(),
-        _ => {
-            eprintln!("Invalid compression mode. Using default compression.");
-            Compression::default()
+
+// fn write_output_file(
+//     out_file: fs::File,
+//     rx: Receiver<Vec<u8>>,
+//     compression_mode: Compression,
+//     no_compress: bool,
+//     output_fasta: bool,
+// ) {
+//     let mut out_buf: Box<dyn io::Write> = if no_compress || output_fasta {
+//         Box::new(io::BufWriter::new(out_file))
+//     } else {
+//         Box::new(io::BufWriter::new(GzEncoder::new(
+//             out_file,
+//             compression_mode,
+//         )))
+//     };
+
+//     for data in rx {
+//         out_buf
+//             .write_all(&data)
+//             .and_then(|_| out_buf.write_all(b"\n"))
+//             .expect("Error writing to output file");
+//     }
+//     out_buf.flush().expect("Error flushing output buffer");
+// }
+
+/// Infer the compression format from a file path based on its extension.
+///
+/// This function takes a file path as input and checks its file extension to determine
+/// the compression format. It supports all niffler compression  types
+/// If the extension is not recognized, it defaults to no compression.
+///
+/// # Arguments
+///
+/// * `file_path` - A reference to a `String` containing the file path to analyze.
+///
+/// # Returns
+///
+/// Niffler compression format.
+fn infer_compression(file_path: &String) -> niffler::compression::Format {
+    let path = Path::new(&file_path);
+    let ext = path.extension().unwrap().to_str().unwrap();
+    match ext {
+        "gz" => niffler::compression::Format::Gzip,
+        "bz2" => niffler::compression::Format::Bzip,
+        "lzma" => niffler::compression::Format::Lzma,
+        "zst" => niffler::compression::Format::Zstd,
+        _ => niffler::compression::Format::No,
+    }
+}
+
+/// Write fastq data to output file
+///
+/// This function takes received data from the provided Receiver channel corresponding to an inputfile and writes it to the specified output
+/// file to an output file, optionally applying compression.
+///
+/// # Arguments
+///
+/// * `rx`: A Receiver from which parsed fastq lines will be received.
+/// * `out_file`: A file representing the output file where data will be written.
+/// * `output_type`: The compression type to use for the output file.
+/// * `compression_level`: The compression level to use for the output file.
+fn write_output_fastq(
+    rx: Receiver<fastq::Record>,
+    out_file: String,
+    output_type: Option<niffler::Format>,
+    compression_level: niffler::Level,
+) {
+    //if output type has value, use that, otherwise infer from file extension
+    let compression_type = match output_type {
+        Some(output_type) => {
+            debug!("Output type overridden as: {:?}", output_type);
+            output_type
+        }
+        None => {
+            let inferred_type = infer_compression(&out_file);
+            debug!("Inferred output compression type as: {:?}", inferred_type);
+            inferred_type
         }
     };
-    println!(">> Step 1: Collecting taxon and read IDs to save");
-    let taxon_ids_to_save = collect_taxons_to_save(&args);
-    io::stdout().flush().unwrap();
-    let reads_to_save = process_kraken_output(args.kraken, args.exclude, taxon_ids_to_save);
-
-    println!(">> Step 2: Extracting reads to save and creating output");
-
-    // Spawn the writer thread
-    let (tx, rx) = channel::<Vec<u8>>();
-    let writer_thread = thread::spawn(move || {
-        let out_file = fs::File::create(args.output).expect("Error creating output file");
-        let mut out_buf: Box<dyn io::Write> = if args.no_compress {
-            Box::new(io::BufWriter::new(out_file))
-        } else {
-            Box::new(io::BufWriter::new(GzEncoder::new(
-                out_file,
-                compression_mode,
-            )))
-        };
-
-        for data in rx {
-            out_buf
-                .write_all(&data)
-                .and_then(|_| out_buf.write_all(b"\n"))
-                .expect("Error writing to output file");
+    debug!(
+        "Output compression level specified as: {:?}",
+        compression_level
+    );
+    debug!("Creating output file: {:?}", out_file);
+    let out_file = match fs::File::create(out_file) {
+        Ok(out_file1) => out_file1,
+        Err(_) => {
+            error!("Error opening output2 file for writing");
+            std::process::exit(1);
         }
-        out_buf.flush().expect("Error flushing output buffer");
+    };
+
+    let file_handle = Box::new(io::BufWriter::new(out_file));
+    match niffler::get_writer(file_handle, compression_type, compression_level) {
+        Ok(writer) => {
+            let mut fastq_writer = fastq::Writer::new(writer);
+            for record in rx {
+                match fastq_writer.write_record(&record) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        error!("Error writing FASTQ record: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            error!("Error getting writer: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
+fn write_output_fasta(rx: Receiver<fastq::Record>, out_file: String) {
+    debug!("Creating output file: {:?}", out_file);
+    let out_file = match fs::File::create(out_file) {
+        Ok(out_file1) => out_file1,
+        Err(_) => {
+            error!("Error opening output2 file for writing");
+            std::process::exit(1);
+        }
+    };
+    let mut writer = fasta::Writer::new(out_file);
+    for record in rx {
+        let definition = Definition::new(std::str::from_utf8(record.name()).unwrap(), None);
+        let sequence = Sequence::from(Vec::from(record.sequence()));
+        match writer.write_record(&fasta::Record::new(definition, sequence)) {
+            Ok(_) => {}
+            Err(e) => {
+                error!("Error writing FASTA record: {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
+}
+
+/// Process single-end reads from a FASTQ file.
+///
+/// This function runs the processing of single-end reads from a FASTQ file.
+/// It spawns two threads: one for reading and parsing the FASTQ file and another for writing
+/// the selected reads to an output file.
+///
+/// # Arguments
+///
+/// * `reads_to_save` - A HashMap containing read IDs and their associated taxon IDs.
+/// * `input` - A vector containing the paths to the input file.
+/// * `output` - A vector containing the paths to the output file.
+/// * `output_type` - The compression type to use for the output file.
+/// * `compression_level` - The compression level to use for the output file.
+/// * `fasta` - A boolean indicating whether the output should be in FASTA format.
+fn process_single_end(
+    reads_to_save: Arc<HashMap<String, i32>>,
+    input: Vec<String>,
+    output: Vec<String>,
+    compression_type: Option<niffler::Format>,
+    compression_level: niffler::Level,
+    fasta: bool,
+) {
+    let (tx, rx) = channel::unbounded::<fastq::Record>();
+    let output_file = output[0].clone();
+
+    let reader_thread = thread::spawn({
+        trace!("Spawning reader thread");
+        let reads_to_save_arc = reads_to_save.clone();
+        move || {
+            parse_fastq(&input[0], reads_to_save_arc, &tx);
+        }
+    });
+    let writer_thread = thread::spawn({
+        trace!("Spawning writer thread");
+        move || {
+            if !fasta {
+                write_output_fastq(rx, output_file, compression_type, compression_level);
+            } else {
+                write_output_fasta(rx, output_file);
+            }
+        }
+    });
+    reader_thread.join().unwrap();
+    info!("Processing is done. Writing is in progress...");
+    writer_thread.join().unwrap();
+    info!("Writing complete.");
+}
+
+/// Process paired-end reads from FASTQ files.
+///
+/// This function runs the processing of paired-end reads from two FASTQ input files.
+/// It spawns two threads for reading and parsing each input file and two threads for writing
+/// selected reads to their respective output files.
+///
+/// # Arguments
+///
+/// * `reads_to_save` - A HashMap containing read IDs and their associated taxon IDs.
+/// * `input` - A vector containing the paths to the two input files.
+/// * `output` - A vector containing the paths to the two output files.
+/// * `compression_type` - The compression type to use for the output files.
+/// * `compression_level` - The compression level to use for the output files.
+/// * `fasta` - A boolean indicating whether to output in FASTA format.
+fn process_paired_end(
+    reads_to_save: Arc<HashMap<String, i32>>,
+    input: Vec<String>,
+    output: Vec<String>,
+    compression_type: Option<niffler::Format>,
+    compression_level: niffler::Level,
+    fasta: bool,
+) {
+    let (tx1, rx1) = channel::unbounded::<fastq::Record>();
+    let (tx2, rx2) = channel::unbounded::<fastq::Record>();
+    let input_file1 = input[0].clone();
+    let input_file2 = input[1].clone();
+    let output_file1 = output[0].clone();
+    let output_file2 = output[1].clone();
+
+    let reader_thread1 = thread::spawn({
+        trace!("Spawning reader thread 1");
+        let reads_to_save_arc = reads_to_save.clone();
+        move || {
+            parse_fastq(&input_file1, reads_to_save_arc, &tx1);
+        }
+    });
+    let reader_thread2 = thread::spawn({
+        trace!("Spawning reader thread 2");
+        let reads_to_save_arc = reads_to_save.clone();
+        move || {
+            parse_fastq(&input_file2, reads_to_save_arc, &tx2);
+        }
     });
 
-    let in_buf = read_fastq(&args.fastq);
-    parse_fastq(in_buf, &tx, reads_to_save);
+    let writer_thread1 = thread::spawn({
+        trace!("Spawning writer thread 1");
+        move || {
+            if !fasta {
+                write_output_fastq(rx1, output_file1, compression_type, compression_level);
+            } else {
+                write_output_fasta(rx1, output_file1);
+            }
+        }
+    });
+    let writer_thread2 = thread::spawn({
+        trace!("Spawning writer thread 2");
+        move || {
+            if !fasta {
+                write_output_fastq(rx2, output_file2, compression_type, compression_level);
+            } else {
+                write_output_fasta(rx2, output_file2);
+            }
+        }
+    });
+    reader_thread1.join().unwrap();
+    reader_thread2.join().unwrap();
+    info!("Processing is done. Writing is in progress...");
+    writer_thread1.join().unwrap();
+    writer_thread2.join().unwrap();
+    info!("Writing complete.");
+}
 
-    println!("  Processing is done. Writing is in progress...");
-    drop(tx);
+/// Initializes and configures the logger.
+///
+/// This function sets up the logger for the application When verbosity is enabled, log messages
+/// at the `Debug` level and above are output, else "Info" level is output.
+///
+/// # Arguments
+///
+/// * `verbose` - A boolean flag indicating whether verbose logging should be enabled.
+fn logger(verbose: bool) {
+    let level_filter = if verbose {
+        LevelFilter::Debug
+    } else {
+        LevelFilter::Info
+    };
 
-    writer_thread.join().unwrap();
+    Builder::new()
+        .format(|buf, record| {
+            let mut style = buf.style();
+            style.set_color(match record.level() {
+                log::Level::Trace => Color::Magenta,
+                log::Level::Debug => Color::Blue,
+                log::Level::Info => Color::Green,
+                log::Level::Warn => Color::Yellow,
+                log::Level::Error => Color::Red,
+            });
 
-    println!("Writing complete.");
+            writeln!(
+                buf,
+                "{} [{}] - {}",
+                Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+                style.value(record.level()),
+                record.args()
+            )
+        })
+        .filter(None, level_filter)
+        .init();
+}
+
+fn main() {
+    let args = Cli::parse();
+
+    //init logging
+    logger(args.verbose);
+
+    //Validate input/output args
+    args.validate_input();
+
+    //collect the taxon IDs to save and map those to read IDs
+    let taxon_ids_to_save = collect_taxons_to_save(&args);
+    let reads_to_save = process_kraken_output(args.kraken, args.exclude, taxon_ids_to_save);
+
+    //check if paired-end reads are provided
+    let paired = args.input.len() == 2;
+    if paired {
+        info!("Detected two input files. Assuming paired-end reads");
+        process_paired_end(
+            reads_to_save.clone(),
+            args.input,
+            args.output,
+            args.output_type,
+            args.compression_level,
+            args.output_fasta,
+        );
+    } else {
+        info!("Detected one input file. Assuming single-end reads");
+        process_single_end(
+            reads_to_save.clone(),
+            args.input,
+            args.output,
+            args.output_type,
+            args.compression_level,
+            args.output_fasta,
+        );
+    }
 }
