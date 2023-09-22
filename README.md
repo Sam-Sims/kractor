@@ -31,16 +31,16 @@ For more detail see [benchmarks](benchmarks/benchmarks.md)
 
 ## Installation
 
-### `Precompiled`
+#### `Precompiled`
 Github release: [0.2.3](https://github.com/Sam-Sims/krakenXtract/releases/tag/v0.2.3)
 
-### `Cargo`
+#### `Cargo`
 Requires [cargo](https://www.rust-lang.org/tools/install)
 ```
 cargo install krakenxtract
 ```
 
-### `Build from source`
+#### `Build from source`
 
 #### Install rust toolchain:
 
@@ -82,7 +82,7 @@ krakenXtract -k <kraken_output> -i <R1_fastq_file> -i <R2_fastq_file> -t <taxono
 
 `-i, --input`
 
-This option will specify the input files containing the reads you want to extract from. They can be compressed - (gzip, bzip, lzma, zstd). Paired end reads can be specified by:
+This option will specify the input files containing the reads you want to extract from. They can be compressed - (`gzip`, `bzip`, `lzma`, `zstd`). Paired end reads can be specified by:
 
 Using `--input` twice: `-i <R1_fastq_file> -i <R2_fastq_file>`
 
@@ -96,7 +96,7 @@ Using `--input` once but passing both files: `-i <R1_fastq_file> <R2_fastq_file>
 
 This option will specify the output files containing the extracted reads. The order of the output files is assumed to be the same as the input. 
 
-By default the compression will be inferred from the output file extension for supported file types (gz, bzip, lzma and zstd). If the output type cannot be inferred, plaintext will be output.
+By default the compression will be inferred from the output file extension for supported file types (`gzip`, `bzip`, `lzma` and `zstd`). If the output type cannot be inferred, plaintext will be output.
 
 #### Kraken Output
 
