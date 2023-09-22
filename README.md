@@ -193,6 +193,7 @@ This will output every read except those matching the taxid. Works with `--paren
 - Major under the hood changes to use Noodles for fastq parsing, and Niffler to handle compression (RIP my own code)
 - Output a fasta file with `--output-fasta`
 - Streamline arguments related to compression types/level
+- Improved logging
 
 ### 0.2.3
 
