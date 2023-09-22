@@ -1,6 +1,6 @@
 [package]
 name = "krakenxtract"
-version = "0.2.3"
+version = "0.3.0"
 edition = "2021"
 authors = ["Samuel Sims"]
 description = "Extract reads from a FASTQ file based on taxonomic classification via Kraken2."
