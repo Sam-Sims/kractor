@@ -75,7 +75,7 @@ krakenXtract -k <kraken_output> -i <R1_fastq_file> -i <R2_fastq_file> -t <taxono
 ```
 If you want to extract all children of a taxon:
 ```bash
-krakenXtract -k <kraken_output> -r <kraken_report> -i <R1_fastq_file> -i <R2_fastq_file> -t <taxonomic_id> --children -o <R1_output_file> -o <R2_output_file>
+krakenXtract -k <kraken_output> -r <kraken_report> -i <fastq_file> -t <taxonomic_id> --children -o <output_file>
 ```
 
 ### Arguments:
