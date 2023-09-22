@@ -116,7 +116,15 @@ This option will specify the taxon ID for reads you want to extract.
 
 `-O, --output-type`
 
-This option will manually set the compression mode used for the output file and will override the type inferred from the output path.
+This option will manually set the compression mode used for the output file and will override the type inferred from the output path. 
+
+Valid values are:
+
+- `gz` to output gzip
+- `bz` to output bzip
+- `lzma` to output lzma
+- `zstd` to output zstd
+- `none` to not apply compresison
 
 #### Compression level
 

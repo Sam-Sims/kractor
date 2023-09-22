@@ -14,10 +14,15 @@ pub struct Cli {
     #[arg(short = 'o', long = "output", num_args(0..=2), required = true)]
     pub output: Vec<String>,
     // Kraken2 output file
-    #[arg(short = 'k', long = "kraken", required = true)]
+    #[arg(
+        short = 'k',
+        long = "kraken",
+        required = true,
+        value_parser(check_input_exists)
+    )]
     pub kraken: String,
     // Kraken2 report file
-    #[arg(short = 'r', long = "report")]
+    #[arg(short = 'r', long = "report", value_parser(check_input_exists))]
     pub report: Option<String>,
     // Taxid to extract reads for
     #[arg(short = 't', long = "taxid", required = true)]
@@ -79,11 +84,11 @@ impl Cli {
 
 fn validate_compression(s: &str) -> Result<niffler::compression::Format, String> {
     match s {
-        "g" => Ok(niffler::compression::Format::Gzip),
-        "b" => Ok(niffler::compression::Format::Bzip),
-        "l" => Ok(niffler::compression::Format::Lzma),
-        "z" => Ok(niffler::compression::Format::Zstd),
-        "u" => Ok(niffler::compression::Format::No),
+        "gz" => Ok(niffler::compression::Format::Gzip),
+        "bz" => Ok(niffler::compression::Format::Bzip),
+        "lzma" => Ok(niffler::compression::Format::Lzma),
+        "zst" => Ok(niffler::compression::Format::Zstd),
+        "none" => Ok(niffler::compression::Format::No),
         _ => Err(format!("Unknown compression type: {}", s)),
     }
 }

@@ -336,6 +336,7 @@ fn build_tree_from_kraken_report(
 ///
 /// A vector of taxon IDs that need to be saved.
 fn collect_taxons_to_save(args: &Cli) -> Vec<i32> {
+    //TODO refactor this not to use the entire args struct
     let mut taxon_ids_to_save = Vec::new();
     if args.report.is_some() {
         info!("Processing kraken report...");
@@ -433,7 +434,13 @@ fn parse_fastq(
     let mut last_progress_update = Instant::now();
     const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_millis(1500);
 
-    let (reader, format) = niffler::from_path(file_path).unwrap();
+    let (reader, format) = match niffler::from_path(file_path) {
+        Ok(result) => result,
+        Err(e) => {
+            error!("Error opening file: {}", e);
+            std::process::exit(1);
+        }
+    };
     debug!(
         "Detected input compression type for file {:?} as: {:?}",
         file_path, format
@@ -552,11 +559,23 @@ fn write_output_fastq(
     };
 
     let file_handle = Box::new(io::BufWriter::new(out_file));
-    let writer = niffler::get_writer(file_handle, compression_type, compression_level).unwrap();
-
-    let mut fastq_writer = fastq::Writer::new(writer);
-    for record in rx {
-        fastq_writer.write_record(&record).unwrap();
+    match niffler::get_writer(file_handle, compression_type, compression_level) {
+        Ok(writer) => {
+            let mut fastq_writer = fastq::Writer::new(writer);
+            for record in rx {
+                match fastq_writer.write_record(&record) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        error!("Error writing FASTQ record: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            error!("Error getting writer: {}", e);
+            std::process::exit(1);
+        }
     }
 }
 
@@ -573,9 +592,13 @@ fn write_output_fasta(rx: Receiver<fastq::Record>, out_file: String) {
     for record in rx {
         let definition = Definition::new(std::str::from_utf8(record.name()).unwrap(), None);
         let sequence = Sequence::from(Vec::from(record.sequence()));
-        writer
-            .write_record(&fasta::Record::new(definition, sequence))
-            .unwrap();
+        match writer.write_record(&fasta::Record::new(definition, sequence)) {
+            Ok(_) => {}
+            Err(e) => {
+                error!("Error writing FASTA record: {}", e);
+                std::process::exit(1);
+            }
+        }
     }
 }
 
