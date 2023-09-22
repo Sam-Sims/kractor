@@ -73,6 +73,10 @@ Or, if you have paired-end illumina reads:
 ```bash
 krakenXtract -k <kraken_output> -i <R1_fastq_file> -i <R2_fastq_file> -t <taxonomic_id> -o <R1_output_file> -o <R2_output_file>
 ```
+If you want to extract all children of a taxon:
+```bash
+krakenXtract -k <kraken_output> -r <kraken_report> -i <R1_fastq_file> -i <R2_fastq_file> -t <taxonomic_id> --children -o <R1_output_file> -o <R2_output_file>
+```
 
 ### Arguments:
 
@@ -185,10 +189,10 @@ This will output every read except those matching the taxid. Works with `--paren
 
 ### 0.3.0
 
-- Support for paired-end files #12
-- Major under the hood changes to use Noodles for fastq parsing, and Niffler to handle compression (RIP my own code) #10
-- Output a fasta file with `--output-fasta` #13
-- Streamline arguments related to compression types/level #7 #9
+- Support for paired-end files
+- Major under the hood changes to use Noodles for fastq parsing, and Niffler to handle compression (RIP my own code)
+- Output a fasta file with `--output-fasta`
+- Streamline arguments related to compression types/level
 
 ### 0.2.3
 
