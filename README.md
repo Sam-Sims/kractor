@@ -185,10 +185,10 @@ This will output every read except those matching the taxid. Works with `--paren
 
 ### 0.3.0
 
-- Support for paired-end files
-- Major under the hood changes to use Noodles for fastq parsing, and Niffler to handle compression (RIP my own code)
-- Output a fasta file with `--output-fasta`
-- Streamline arguments related to compression types/level
+- Support for paired-end files #12
+- Major under the hood changes to use Noodles for fastq parsing, and Niffler to handle compression (RIP my own code) #10
+- Output a fasta file with `--output-fasta` #13
+- Streamline arguments related to compression types/level #7 #9
 
 ### 0.2.3
 
