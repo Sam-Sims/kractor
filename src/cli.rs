@@ -23,13 +23,17 @@ pub struct Cli {
     #[arg(short = 't', long = "taxid", required = true)]
     pub taxid: i32,
     // Compression type
-    #[arg(short = 'O', long = "compression-type", value_parser(validate_compression))]
+    #[arg(
+        short = 'O',
+        long = "compression-type",
+        value_parser(validate_compression)
+    )]
     pub output_type: Option<niffler::compression::Format>,
     //Compression level
     #[arg(
         short = 'l',
         long = "level",
-        default_value = "2",
+        default_value = "6",
         value_parser(validate_compression_level)
     )]
     pub compression_level: niffler::Level,
