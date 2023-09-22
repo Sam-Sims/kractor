@@ -8,7 +8,7 @@
 Extract reads from a FASTQ file based on taxonomic classification via Kraken2.
 
 
-# Motivation
+## Motivation
 
 Heavily inspired by the great [KrakenTools](https://github.com/jenniferlu717/KrakenTools). 
 
@@ -18,7 +18,7 @@ The main motivation was to provide a speedup when extracting a large number of r
 
 This is currently an early implementation, with plans to expand functionality.
 
-# Current features
+## Current features
 
 - Extract all reads from a `fastq` file based on a taxonomic id
 - Extract all the parents or the children of the specified taxon id
@@ -31,7 +31,7 @@ This is currently an early implementation, with plans to expand functionality.
 
 For more detail see [benchmarks](benchmarks/benchmarks.md)
 
-# Installation
+## Installation
 
 Download the latest release from GitHub.
 
@@ -56,9 +56,9 @@ export PATH=$PATH:$(pwd)/target/release
 
 All executables will be in the directory kraken-extract/target/release.
 
-# Usage
+## Usage
 
-## Basic Usage:
+### Basic Usage:
 
 ```bash
 krakenXtract -k <kraken_output> -i <fastq_file> -t <taxonomic_id> -o <output_file>
@@ -68,7 +68,7 @@ Or, if you have paired-end illumina reads:
 krakenXtract -k <kraken_output> -i <R1_fastq_file> -i <R2_fastq_file> -t <taxonomic_id> -o <R1_output_file> -o <R2_output_file>
 ```
 
-## Detailed Usage:
+### Arguments:
 ### Required:
 **Input**
 
