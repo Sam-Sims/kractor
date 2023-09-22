@@ -31,16 +31,16 @@ For more detail see [benchmarks](benchmarks/benchmarks.md)
 
 ## Installation
 
-### Download the latest release from GitHub:
+### `Precompiled`
 Github release: [0.2.3](https://github.com/Sam-Sims/krakenXtract/releases/tag/v0.2.3)
 
-### Cargo:
+### `Cargo`
 Requires [cargo](https://www.rust-lang.org/tools/install)
 ```
 cargo install krakenxtract
 ```
 
-### Alternatively, build from source:
+### `Build from source`
 
 #### Install rust toolchain:
 
