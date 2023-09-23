@@ -12,7 +12,7 @@ use noodles::{
     fastq,
 };
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::{self},
     io::{self, prelude::*, BufReader},
     path::Path,
@@ -126,9 +126,9 @@ fn process_kraken_output(
     kraken_path: String,
     exclude: bool,
     taxon_ids_to_save: Vec<i32>,
-) -> Arc<HashMap<String, i32>> {
+) -> Arc<HashSet<String>> {
     info!("Processing kraken output...");
-    let mut reads_to_save = HashMap::new();
+    let mut reads_to_save = HashSet::new();
     //let kraken_file = fs::File::open(kraken_path).expect("Error reading kraken output file");
     let kraken_file = match fs::File::open(kraken_path) {
         Ok(kraken_file) => kraken_file,
@@ -146,10 +146,10 @@ fn process_kraken_output(
         let (taxon_id, read_id) = process_kraken_output_line(&line);
         if exclude {
             if !taxon_ids_to_save.contains(&taxon_id) {
-                reads_to_save.insert(read_id.clone(), taxon_id);
+                reads_to_save.insert(read_id.clone());
             }
         } else if taxon_ids_to_save.contains(&taxon_id) {
-            reads_to_save.insert(read_id.clone(), taxon_id);
+            reads_to_save.insert(read_id.clone());
         }
         total_reads += 1;
     }
@@ -159,7 +159,7 @@ fn process_kraken_output(
         total_reads,
         reads_to_save.len()
     );
-    let reads_to_save: Arc<HashMap<String, i32>> = Arc::new(reads_to_save);
+    let reads_to_save: Arc<HashSet<String>> = Arc::new(reads_to_save);
     reads_to_save
 }
 
@@ -424,11 +424,7 @@ fn collect_taxons_to_save(args: &Cli) -> Vec<i32> {
 /// * `file_path` - A string containing the path to the FASTQ file.
 /// * `reads_to_save` - A HashMap containing read IDs and their associated taxon IDs.
 /// * `tx` - A Sender channel to send the parsed reads to the writer thread.
-fn parse_fastq(
-    file_path: &str,
-    reads_to_save: Arc<HashMap<String, i32>>,
-    tx: &Sender<fastq::Record>,
-) {
+fn parse_fastq(file_path: &str, reads_to_save: Arc<HashSet<String>>, tx: &Sender<fastq::Record>) {
     let mut num_reads = 0;
 
     let mut last_progress_update = Instant::now();
@@ -453,7 +449,7 @@ fn parse_fastq(
         let record = result.unwrap();
         let read_name_bytes = record.name();
         let read_name_string = std::str::from_utf8(read_name_bytes);
-        if reads_to_save.contains_key(&read_name_string.unwrap().to_string()) {
+        if reads_to_save.contains(&read_name_string.unwrap().to_string()) {
             tx.send(record).unwrap();
         }
         num_reads += 1;
@@ -617,7 +613,7 @@ fn write_output_fasta(rx: Receiver<fastq::Record>, out_file: String) {
 /// * `compression_level` - The compression level to use for the output file.
 /// * `fasta` - A boolean indicating whether the output should be in FASTA format.
 fn process_single_end(
-    reads_to_save: Arc<HashMap<String, i32>>,
+    reads_to_save: Arc<HashSet<String>>,
     input: Vec<String>,
     output: Vec<String>,
     compression_type: Option<niffler::Format>,
@@ -665,7 +661,7 @@ fn process_single_end(
 /// * `compression_level` - The compression level to use for the output files.
 /// * `fasta` - A boolean indicating whether to output in FASTA format.
 fn process_paired_end(
-    reads_to_save: Arc<HashMap<String, i32>>,
+    reads_to_save: Arc<HashSet<String>>,
     input: Vec<String>,
     output: Vec<String>,
     compression_type: Option<niffler::Format>,
