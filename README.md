@@ -1,13 +1,13 @@
-[![Release](https://github.com/Sam-Sims/kraactor/actions/workflows/release.yaml/badge.svg)](https://github.com/Sam-Sims/kraactor/actions/workflows/release.yaml)
-![GitHub release (with filter)](https://img.shields.io/github/v/release/sam-sims/kraactor)
+[![Release](https://github.com/Sam-Sims/Kractor/actions/workflows/release.yaml/badge.svg)](https://github.com/Sam-Sims/Kractor/actions/workflows/release.yaml)
+![GitHub release (with filter)](https://img.shields.io/github/v/release/sam-sims/Kractor)
 ![crates.io](https://img.shields.io/crates/v/krakenxtract
 )
 
-# Kraactor
+# Kractor
 
 **kra**ken extr**actor**
 
-Kraactor extracts sequencing reads based on taxonomic classifications obtained via [Kraken2](https://github.com/DerrickWood/kraken2). It consumes paired or unpaired `fastq[.gz/.bz]` files as input alongisde a Kraken2 standard output. It can optionally consume a Kraken2 report to extract all taxonomic parents and children of a given taxid. Fast by default, it outputs `fast[q/a]` files, that can optionally be compressed. Kraactor significantly enhances processing speed, improving the speed for uncompressed fastqs by approximately 24x and for compressed fastqs by about 8x. For additional details, refer to the [benchmarks](benchmarks/benchmarks.md)
+Kractor extracts sequencing reads based on taxonomic classifications obtained via [Kraken2](https://github.com/DerrickWood/kraken2). It consumes paired or unpaired `fastq[.gz/.bz]` files as input alongisde a Kraken2 standard output. It can optionally consume a Kraken2 report to extract all taxonomic parents and children of a given taxid. Fast by default, it outputs `fast[q/a]` files, that can optionally be compressed. Kractor significantly enhances processing speed, improving the speed for uncompressed fastqs by approximately 24x and for compressed fastqs by about 8x. For additional details, refer to the [benchmarks](benchmarks/benchmarks.md)
 
 
 ## Motivation
@@ -20,7 +20,7 @@ The main motivation was to provide a speedup when extracting a large number of r
 ## Installation
 
 ### Precompiled:
-Github release: [0.3.0](https://github.com/Sam-Sims/kraactor/releases/tag/v0.3.0)
+Github release: [0.3.0](https://github.com/Sam-Sims/Kractor/releases/tag/v0.3.0)
 
 ### Cargo:
 Requires [cargo](https://www.rust-lang.org/tools/install)
@@ -37,18 +37,18 @@ To install please refer to the rust documentation: [docs](https://www.rust-lang.
 #### Clone the repository:
 
 ```bash
-git clone https://github.com/Sam-Sims/kraactor
+git clone https://github.com/Sam-Sims/Kractor
 ```
 
 #### Build and add to path:
 
 ```bash
-cd kraactor
+cd Kractor
 cargo build --release
 export PATH=$PATH:$(pwd)/target/release
 ```
 
-All executables will be in the directory kraactor/target/release.
+All executables will be in the directory Kractor/target/release.
 
 ## Usage
 
