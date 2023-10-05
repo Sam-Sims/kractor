@@ -1,9 +1,11 @@
-# krakenXtract
+# Kraactor
 
-[![Release](https://github.com/Sam-Sims/krakenXtract/actions/workflows/release.yaml/badge.svg)](https://github.com/Sam-Sims/krakenXtract/actions/workflows/release.yaml)
-![GitHub release (with filter)](https://img.shields.io/github/v/release/sam-sims/krakenxtract)
+[![Release](https://github.com/Sam-Sims/kraactor/actions/workflows/release.yaml/badge.svg)](https://github.com/Sam-Sims/kraactor/actions/workflows/release.yaml)
+![GitHub release (with filter)](https://img.shields.io/github/v/release/sam-sims/kraactor)
 ![crates.io](https://img.shields.io/crates/v/krakenxtract
 )
+
+**kra**ken extr**actor**
 
 Extract reads from a FASTQ file based on taxonomic classification via Kraken2.
 
@@ -32,7 +34,7 @@ For more detail see [benchmarks](benchmarks/benchmarks.md)
 ## Installation
 
 ### Precompiled:
-Github release: [0.3.0](https://github.com/Sam-Sims/krakenXtract/releases/tag/v0.3.0)
+Github release: [0.3.0](https://github.com/Sam-Sims/kraactor/releases/tag/v0.3.0)
 
 ### Cargo:
 Requires [cargo](https://www.rust-lang.org/tools/install)
@@ -49,7 +51,7 @@ To install please refer to the rust documentation: [docs](https://www.rust-lang.
 #### Clone the repository:
 
 ```bash
-git clone https://github.com/Sam-Sims/krakenxtract
+git clone https://github.com/Sam-Sims/kraactor
 ```
 
 #### Build and add to path:
