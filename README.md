@@ -9,13 +9,11 @@
 
 Kractor extracts sequencing reads based on taxonomic classifications obtained via [Kraken2](https://github.com/DerrickWood/kraken2). It consumes paired or unpaired `fastq[.gz/.bz]` files as input alongisde a Kraken2 standard output. It can optionally consume a Kraken2 report to extract all taxonomic parents and children of a given taxid. Fast by default, it outputs `fast[q/a]` files, that can optionally be compressed. Kractor significantly enhances processing speed compared to KrakenTools, improving the speed for uncompressed fastqs by approximately 24x and for compressed fastqs by about 8x. For additional details, refer to the [benchmarks](benchmarks/benchmarks.md)
 
-
 ## Motivation
 
 Heavily inspired by the great [KrakenTools](https://github.com/jenniferlu717/KrakenTools). 
 
 At the time of writing KrakenTools is a single-threaded Python implementation that sequentially processes paired-end files. The main motivations were to enhance speed when handling and extracting a large volume of reads, particualrly paired files - and to learn Rust!
-
 
 ## Installation
 
@@ -152,6 +150,12 @@ This will extract all the reads classified as decendents or subtaxa of `--taxid`
 `--exclude`
 
 This will output every read except those matching the taxid. Works with `--parents` and `--children`
+
+#### Skip report
+
+`--no-json`
+
+This will skip the json report that is output to stdout upon programme completion.
 
 ## Future plans
 
