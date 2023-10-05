@@ -7,14 +7,14 @@
 
 **kra**ken extr**actor**
 
-Kractor extracts sequencing reads based on taxonomic classifications obtained via [Kraken2](https://github.com/DerrickWood/kraken2). It consumes paired or unpaired `fastq[.gz/.bz]` files as input alongisde a Kraken2 standard output. It can optionally consume a Kraken2 report to extract all taxonomic parents and children of a given taxid. Fast by default, it outputs `fast[q/a]` files, that can optionally be compressed. Kractor significantly enhances processing speed, improving the speed for uncompressed fastqs by approximately 24x and for compressed fastqs by about 8x. For additional details, refer to the [benchmarks](benchmarks/benchmarks.md)
+Kractor extracts sequencing reads based on taxonomic classifications obtained via [Kraken2](https://github.com/DerrickWood/kraken2). It consumes paired or unpaired `fastq[.gz/.bz]` files as input alongisde a Kraken2 standard output. It can optionally consume a Kraken2 report to extract all taxonomic parents and children of a given taxid. Fast by default, it outputs `fast[q/a]` files, that can optionally be compressed. Kractor significantly enhances processing speed compared to KrakenTools, improving the speed for uncompressed fastqs by approximately 24x and for compressed fastqs by about 8x. For additional details, refer to the [benchmarks](benchmarks/benchmarks.md)
 
 
 ## Motivation
 
 Heavily inspired by the great [KrakenTools](https://github.com/jenniferlu717/KrakenTools). 
 
-The main motivation was to provide a speedup when extracting a large number of reads from large FASTQ files - and to learn Rust!
+At the time of writing KrakenTools is a single threaded implementation in Python, and processes paired end files sequentially. The main motivation was to provide a speedup when extracting a large number of reads from large FASTQ files - and to learn Rust!
 
 
 ## Installation
@@ -51,7 +51,7 @@ export PATH=$PATH:$(pwd)/target/release
 All executables will be in the directory Kractor/target/release.
 
 ## Usage
-
+![Alt text](screenshot.png)
 ### Basic Usage:
 
 ```bash
