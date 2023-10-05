@@ -681,7 +681,8 @@ fn main() {
     }
     info!("Complete!");
     
-    let stats = serde_json::json!({
+    if !args.no_json {
+        let stats = serde_json::json!({
         "taxon_id_count": *TAXON_ID_COUNT.lock().unwrap(),
         "taxon_ids": *TAXON_IDS.lock().unwrap(),
         "reads_in": *TOTAL_READS.lock().unwrap(),
@@ -689,7 +690,7 @@ fn main() {
         "input_format": if paired { "paired-end" } else { "single-end" },
         "output_format": if args.output_fasta { "fasta" } else { "fastq" },
     });
-
     let stats_json = serde_json::to_string_pretty(&stats).unwrap();
     println!("{}", stats_json);
+    }
 }

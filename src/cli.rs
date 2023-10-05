@@ -54,6 +54,9 @@ pub struct Cli {
     // Output reads in FASTA format
     #[arg(long, action)]
     pub output_fasta: bool,
+    // Dont output json
+    #[arg(long = "no-json")]
+    pub no_json: bool,
     // Verbose
     #[arg(short)]
     pub verbose: bool,
