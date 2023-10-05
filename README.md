@@ -21,9 +21,9 @@ The main motivation was to provide a speedup when extracting a large number of r
 - Extract all reads from a `fastq` file based on a taxonomic id
 - Extract all the parents or the children of the specified taxon id
 - Supports single or paired-end `fastq` files
-- Supports both uncompressed or `gzip` inputs and outputs.
+- Supports both uncompressed or compressed inputs and outputs.
 - Multithreaded
-- ~4.4x speed up compared to KrakenTools
+- ~24x speed up reading uncompressed fastq files and ~8x speed up reading compressed fastq files compared to KrakenTools
 
 ## Benchmarks (WIP)
 
@@ -86,7 +86,7 @@ krakenXtract -k <kraken_output> -r <kraken_report> -i <fastq_file> -t <taxonomic
 
 `-i, --input`
 
-This option will specify the input files containing the reads you want to extract from. They can be compressed - (`gzip`, `bzip`, `lzma`, `zstd`). Paired end reads can be specified by:
+This option will specify the input files containing the reads you want to extract from. They can be compressed - (`gz`, `bz2`). Paired end reads can be specified by:
 
 Using `--input` twice: `-i <R1_fastq_file> -i <R2_fastq_file>`
 
@@ -100,7 +100,7 @@ Using `--input` once but passing both files: `-i <R1_fastq_file> <R2_fastq_file>
 
 This option will specify the output files containing the extracted reads. The order of the output files is assumed to be the same as the input. 
 
-By default the compression will be inferred from the output file extension for supported file types (`gzip`, `bzip`, `lzma` and `zstd`). If the output type cannot be inferred, plaintext will be output.
+By default the compression will be inferred from the output file extension for supported file types (`gz`, `bz`). If the output type cannot be inferred, plaintext will be output.
 
 #### Kraken Output
 
@@ -124,17 +124,15 @@ This option will manually set the compression mode used for the output file and 
 
 Valid values are:
 
-- `gz` to output gzip
-- `bz` to output bzip
-- `lzma` to output lzma
-- `zstd` to output zstd
+- `gz` to output gz
+- `bz2` to output bz2
 - `none` to not apply compresison
 
 #### Compression level
 
 `-l, --level`
 
-This option will set the compression level to use if compressing the output. Should be a value between 1-9 with 1 being the fastest but largest file size and 9 is for slowest, but best file size. By default this is set at 6, but for the highest speeds 2 is a good trade off for speed/filesize.
+This option will set the compression level to use if compressing the output. Should be a value between 1-9 with 1 being the fastest but largest file size and 9 is for slowest, but best file size. By default this is set at 2 as it is a good trade off for speed/filesize.
 
 #### Output fasta
 

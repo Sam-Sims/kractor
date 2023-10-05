@@ -129,7 +129,6 @@ fn process_kraken_output(
 ) -> Arc<HashSet<String>> {
     info!("Processing kraken output...");
     let mut reads_to_save = HashSet::new();
-    //let kraken_file = fs::File::open(kraken_path).expect("Error reading kraken output file");
     let kraken_file = match fs::File::open(kraken_path) {
         Ok(kraken_file) => kraken_file,
         Err(_) => {
@@ -140,7 +139,6 @@ fn process_kraken_output(
     let reader = io::BufReader::new(kraken_file);
     let mut total_reads = 0;
 
-    io::stdout().flush().unwrap();
     for line_result in reader.lines() {
         let line = line_result.expect("Error reading kraken output line");
         let (taxon_id, read_id) = process_kraken_output_line(&line);
@@ -506,8 +504,6 @@ fn infer_compression(file_path: &String) -> niffler::compression::Format {
     match ext {
         "gz" => niffler::compression::Format::Gzip,
         "bz2" => niffler::compression::Format::Bzip,
-        "lzma" => niffler::compression::Format::Lzma,
-        "zst" => niffler::compression::Format::Zstd,
         _ => niffler::compression::Format::No,
     }
 }
@@ -747,7 +743,7 @@ fn logger(verbose: bool) {
             writeln!(
                 buf,
                 "{} [{}] - {}",
-                Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+                Local::now().format("[%H:%M:%S]"),
                 style.value(record.level()),
                 record.args()
             )
