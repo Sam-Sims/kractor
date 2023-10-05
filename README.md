@@ -1,6 +1,6 @@
 [![Release](https://github.com/Sam-Sims/Kractor/actions/workflows/release.yaml/badge.svg)](https://github.com/Sam-Sims/Kractor/actions/workflows/release.yaml)
 ![GitHub release (with filter)](https://img.shields.io/github/v/release/sam-sims/Kractor)
-![crates.io](https://img.shields.io/crates/v/krakenxtract
+![crates.io](https://img.shields.io/crates/v/kractor
 )
 
 # Kractor
@@ -25,7 +25,7 @@ Github release: [0.3.0](https://github.com/Sam-Sims/Kractor/releases/tag/v0.3.0)
 ### Cargo:
 Requires [cargo](https://www.rust-lang.org/tools/install)
 ```
-cargo install krakenxtract
+cargo install kractor
 ```
 
 ### Build from source:
@@ -55,15 +55,15 @@ All executables will be in the directory Kractor/target/release.
 ### Basic Usage:
 
 ```bash
-krakenXtract -k <kraken_output> -i <fastq_file> -t <taxonomic_id> -o <output_file>
+kractor -k <kraken_output> -i <fastq_file> -t <taxonomic_id> -o <output_file>
 ```
 Or, if you have paired-end illumina reads:
 ```bash
-krakenXtract -k <kraken_output> -i <R1_fastq_file> -i <R2_fastq_file> -t <taxonomic_id> -o <R1_output_file> -o <R2_output_file>
+kractor -k <kraken_output> -i <R1_fastq_file> -i <R2_fastq_file> -t <taxonomic_id> -o <R1_output_file> -o <R2_output_file>
 ```
 If you want to extract all children of a taxon:
 ```bash
-krakenXtract -k <kraken_output> -r <kraken_report> -i <fastq_file> -t <taxonomic_id> --children -o <output_file>
+kractor -k <kraken_output> -r <kraken_report> -i <fastq_file> -t <taxonomic_id> --children -o <output_file>
 ```
 
 ### Arguments:
