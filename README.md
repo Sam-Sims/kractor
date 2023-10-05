@@ -1,35 +1,21 @@
-# Kraactor
-
 [![Release](https://github.com/Sam-Sims/kraactor/actions/workflows/release.yaml/badge.svg)](https://github.com/Sam-Sims/kraactor/actions/workflows/release.yaml)
 ![GitHub release (with filter)](https://img.shields.io/github/v/release/sam-sims/kraactor)
 ![crates.io](https://img.shields.io/crates/v/krakenxtract
 )
 
+# Kraactor
+
 **kra**ken extr**actor**
 
-Extract reads from a FASTQ file based on taxonomic classification via Kraken2.
+Kraactor extracts sequencing reads based on taxonomic classifications obtained via [Kraken2](https://github.com/DerrickWood/kraken2). It consumes paired or unpaired `fastq[.gz/.bz]` files as input alongisde a Kraken2 standard output. It can optionally consume a Kraken2 report to extract all taxonomic parents and children of a given taxid. Fast by default, it outputs `fast[q/a]` files, that can optionally be compressed. Kraactor significantly enhances processing speed, improving the speed for uncompressed fastqs by approximately 24x and for compressed fastqs by about 8x. For additional details, refer to the [benchmarks](benchmarks/benchmarks.md)
 
 
 ## Motivation
 
 Heavily inspired by the great [KrakenTools](https://github.com/jenniferlu717/KrakenTools). 
 
-Having been wanting to experiment with Rust for a while, this is essentially an implementation of the `extract_kraken_reads.py` script, [re-implemented](https://www.reddit.com/media?url=https%3A%2F%2Fi.redd.it%2Fgood-for-you-crab-v0-5v9ygeh9r1c91.jpg%3Fs%3Dd759db5275e32c6e2bd5c22bddbd783acca46247) in Rust. 
-
 The main motivation was to provide a speedup when extracting a large number of reads from large FASTQ files - and to learn Rust!
 
-## Current features
-
-- Extract all reads from a `fastq` file based on a taxonomic id
-- Extract all the parents or the children of the specified taxon id
-- Supports single or paired-end `fastq` files
-- Supports both uncompressed or compressed inputs and outputs.
-- Multithreaded
-- ~24x speed up reading uncompressed fastq files and ~8x speed up reading compressed fastq files compared to KrakenTools
-
-## Benchmarks (WIP)
-
-For more detail see [benchmarks](benchmarks/benchmarks.md)
 
 ## Installation
 
@@ -57,12 +43,12 @@ git clone https://github.com/Sam-Sims/kraactor
 #### Build and add to path:
 
 ```bash
-cd kraken-extract
+cd kraactor
 cargo build --release
 export PATH=$PATH:$(pwd)/target/release
 ```
 
-All executables will be in the directory kraken-extract/target/release.
+All executables will be in the directory kraactor/target/release.
 
 ## Usage
 
