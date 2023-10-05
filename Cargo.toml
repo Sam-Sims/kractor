@@ -1,15 +1,15 @@
 [package]
-name = "krakenxtract"
+name = "kraactor"
 version = "0.3.0"
 edition = "2021"
 authors = ["Samuel Sims"]
 description = "Extract reads from a FASTQ file based on taxonomic classification via Kraken2."
 readme = "README.md"
-repository = "https://github.com/Sam-Sims/krakenXtract"
+repository = "https://github.com/Sam-Sims/kraactor"
 license = "MIT"
 keywords = ["kraken", "bioinformatics", "taxonomy", "fastq"]
 categories = ["command-line-utilities", "science"]
-documentation = "https://docs.rs/crate/krakenxtract/"
+documentation = "https://docs.rs/crate/kraactor/"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
