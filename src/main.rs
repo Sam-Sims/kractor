@@ -3,7 +3,7 @@ use chrono::Local;
 use clap::Parser;
 use crossbeam::channel::{self, Receiver, Sender};
 use env_logger::{fmt::Color, Builder};
-use log::{debug, error, info, trace, warn, LevelFilter};
+use log::{debug, error, info, trace, LevelFilter};
 use noodles::{
     fasta::{
         self,
@@ -16,10 +16,11 @@ use std::{
     fs::{self},
     io::{self, prelude::*, BufReader},
     path::Path,
-    sync::Arc,
+    sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant},
 };
+use lazy_static::lazy_static;
 
 mod cli;
 
@@ -42,52 +43,12 @@ impl Tree {
     }
 }
 
-/// Reads a FASTQ file from the specified path and returns a buffered reader.
-///
-/// This function reads a FASTQ file from the given path and returns a buffered reader
-/// It automatically handles both plain text and gzipped files based on the file's magic number.
-///
-/// # Arguments
-///
-/// * `path` - A string containing the path to the FASTQ file.
-///
-/// # Returns
-///
-/// A buffered reader containing the contents of the FASTQ file. The reader may be a
-/// plain text reader or a gzip decompressor, depending on the file format.
-// fn read_fastq(path: &str) -> BufReader<Box<dyn io::Read + Send>> {
-//     // The gzip magic number is 0x1f8b
-//     const GZIP_MAGIC_NUMBER: [u8; 2] = [0x1f, 0x8b];
-
-//     let mut file = match fs::File::open(path) {
-//         Ok(file) => file,
-//         Err(_) => {
-//             error!("Error opening fastq file");
-//             std::process::exit(1);
-//         }
-//     };
-
-//     // Buffer to store the first two bytes of the file
-//     let mut buffer = [0u8; 2];
-
-//     if let Ok(size) = file.read(&mut buffer) {
-//         // reset the pointer back to the start
-//         file.seek(io::SeekFrom::Start(0)).ok();
-//         // check if the first two bytes match the gzip magic number => file is gzipped
-//         // otherwise, it's a plain text file
-//         if size == 2 && buffer == GZIP_MAGIC_NUMBER {
-//             trace!("Detected gzipped file");
-//             let gzip_reader: Box<dyn io::Read + Send> = Box::new(GzDecoder::new(file));
-//             io::BufReader::new(gzip_reader)
-//         } else {
-//             trace!("Detected plain text file");
-//             let plain_reader: Box<dyn io::Read + Send> = Box::new(file);
-//             io::BufReader::new(plain_reader)
-//         }
-//     } else {
-//         panic!("Error reading from the file");
-//     }
-// }
+lazy_static! {
+    static ref TAXON_ID_COUNT: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+    static ref TAXON_IDS: Arc<Mutex<Vec<i32>>> = Arc::new(Mutex::new(Vec::new()));
+    static ref TOTAL_READS: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+    static ref READS_TO_EXTRACT: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+}
 
 /// Parses a Kraken output line to extract taxon ID and read ID.
 ///
@@ -151,12 +112,16 @@ fn process_kraken_output(
         }
         total_reads += 1;
     }
-    info!("{} taxon IDs identified", taxon_ids_to_save.len());
-    info!(
-        "{} total reads | {} reads to extract.",
-        total_reads,
-        reads_to_save.len()
-    );
+    let mut taxon_id_count = TAXON_ID_COUNT.lock().unwrap();
+    let mut taxon_ids = TAXON_IDS.lock().unwrap();
+    let mut total_read_count = TOTAL_READS.lock().unwrap();
+    let mut reads_to_extract = READS_TO_EXTRACT.lock().unwrap();
+
+    *taxon_id_count = taxon_ids_to_save.len();
+    *taxon_ids = taxon_ids_to_save;
+    *total_read_count = total_reads; // Update this with the actual total_reads value
+    *reads_to_extract = reads_to_save.len();
+
     let reads_to_save: Arc<HashSet<String>> = Arc::new(reads_to_save);
     reads_to_save
 }
@@ -362,54 +327,6 @@ fn collect_taxons_to_save(args: &Cli) -> Vec<i32> {
     taxon_ids_to_save
 }
 
-// fn parse_fastq(
-//     in_buf: io::BufReader<Box<dyn Read + Send>>,
-//     tx: &Sender<Vec<u8>>,
-//     reads_to_save: Arc<HashMap<String, i32>>,
-//     output_fasta: bool,
-// ) {
-//     let mut num_lines = 0;
-//     let mut num_reads = 0;
-//     let mut current_id: String = String::new();
-//     //let mut stdout = BufWriter::new(io::stdout().lock());
-//     let mut line_bytes = Vec::new();
-//     let mut last_progress_update = Instant::now(); // For throttling progress updates
-//     const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_millis(1500);
-
-//     for line in in_buf.lines() {
-//         let line = line.expect("Error reading fastq line");
-//         line_bytes.clear();
-//         line_bytes.extend_from_slice(line.as_bytes());
-//         num_lines += 1;
-
-//         if num_lines % 4 == 1 {
-//             let fields: Vec<&str> = line.split_whitespace().collect();
-//             let read_id = &fields[0][1..];
-//             current_id = read_id.to_string();
-//             num_reads += 1;
-//         }
-//         if reads_to_save.contains_key(&current_id) {
-//             if output_fasta {
-//                 match num_lines % 4 {
-//                     1 => {
-//                         let fasta_header = format!("> {}", current_id);
-//                         tx.send(fasta_header.as_bytes().to_vec()).unwrap();
-//                     }
-//                     2 => tx.send(line_bytes.to_vec()).unwrap(),
-//                     _ => (),
-//                 }
-//             } else {
-//                 tx.send(line_bytes.to_vec()).unwrap();
-//             }
-//         }
-//         // Throttle progress updates - need to fix for multi-threading
-//         if last_progress_update.elapsed() >= PROGRESS_UPDATE_INTERVAL {
-//             trace!("Processed {} reads", num_reads);
-//             last_progress_update = Instant::now();
-//             //io::stdout().flush().unwrap();
-//         }
-//     }
-// }
 
 /// Parse a FASTQ file and send reads to writer thread.
 ///
@@ -459,31 +376,6 @@ fn parse_fastq(file_path: &str, reads_to_save: Arc<HashSet<String>>, tx: &Sender
         }
     }
 }
-
-// fn write_output_file(
-//     out_file: fs::File,
-//     rx: Receiver<Vec<u8>>,
-//     compression_mode: Compression,
-//     no_compress: bool,
-//     output_fasta: bool,
-// ) {
-//     let mut out_buf: Box<dyn io::Write> = if no_compress || output_fasta {
-//         Box::new(io::BufWriter::new(out_file))
-//     } else {
-//         Box::new(io::BufWriter::new(GzEncoder::new(
-//             out_file,
-//             compression_mode,
-//         )))
-//     };
-
-//     for data in rx {
-//         out_buf
-//             .write_all(&data)
-//             .and_then(|_| out_buf.write_all(b"\n"))
-//             .expect("Error writing to output file");
-//     }
-//     out_buf.flush().expect("Error flushing output buffer");
-// }
 
 /// Infer the compression format from a file path based on its extension.
 ///
@@ -637,7 +529,7 @@ fn process_single_end(
         }
     });
     reader_thread.join().unwrap();
-    info!("Processing is done. Writing is in progress...");
+    info!("Processing complete. Writing is in progress...");
     writer_thread.join().unwrap();
     info!("Writing complete.");
 }
@@ -711,7 +603,6 @@ fn process_paired_end(
     info!("Processing is done. Writing is in progress...");
     writer_thread1.join().unwrap();
     writer_thread2.join().unwrap();
-    info!("Writing complete.");
 }
 
 /// Initializes and configures the logger.
@@ -788,4 +679,17 @@ fn main() {
             args.output_fasta,
         );
     }
+    info!("Complete!");
+    
+    let stats = serde_json::json!({
+        "taxon_id_count": *TAXON_ID_COUNT.lock().unwrap(),
+        "taxon_ids": *TAXON_IDS.lock().unwrap(),
+        "reads_in": *TOTAL_READS.lock().unwrap(),
+        "reads_out": *READS_TO_EXTRACT.lock().unwrap(),
+        "input_format": if paired { "paired-end" } else { "single-end" },
+        "output_format": if args.output_fasta { "fasta" } else { "fastq" },
+    });
+
+    let stats_json = serde_json::to_string_pretty(&stats).unwrap();
+    println!("{}", stats_json);
 }
