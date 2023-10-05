@@ -105,10 +105,10 @@ fn process_kraken_output(
         let (taxon_id, read_id) = process_kraken_output_line(&line);
         if exclude {
             if !taxon_ids_to_save.contains(&taxon_id) {
-                reads_to_save.insert(read_id.clone());
+                reads_to_save.insert(read_id);
             }
         } else if taxon_ids_to_save.contains(&taxon_id) {
-            reads_to_save.insert(read_id.clone());
+            reads_to_save.insert(read_id);
         }
         total_reads += 1;
     }
