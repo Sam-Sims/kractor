@@ -14,13 +14,14 @@ Kractor extracts sequencing reads based on taxonomic classifications obtained vi
 
 Heavily inspired by the great [KrakenTools](https://github.com/jenniferlu717/KrakenTools). 
 
-At the time of writing KrakenTools is a single threaded implementation in Python, and processes paired end files sequentially. The main motivation was to provide a speedup when extracting a large number of reads from large FASTQ files - and to learn Rust!
+At the time of writing KrakenTools is a single-threaded Python implementation that sequentially processes paired-end files. The main motivations were to enhance speed when handling and extracting a large volume of reads, particualrly paired files - and to learn Rust!
 
 
 ## Installation
 
-### Precompiled:
-Github release: [0.3.0](https://github.com/Sam-Sims/Kractor/releases/tag/v0.3.0)
+### Binaries:
+
+Precompiled binaries for Linux, MacOS and Windows are attached to the latest release [0.3.0](https://github.com/Sam-Sims/Kractor/releases/tag/v0.3.0)
 
 ### Cargo:
 Requires [cargo](https://www.rust-lang.org/tools/install)
@@ -55,7 +56,7 @@ All executables will be in the directory Kractor/target/release.
 ### Basic Usage:
 
 ```bash
-kractor -k <kraken_output> -i <fastq_file> -t <taxonomic_id> -o <output_file>
+kractor -k <kraken_output> -i <fastq_file> -t <taxonomic_id> -o <output_file> > kractor_report.json
 ```
 Or, if you have paired-end illumina reads:
 ```bash
