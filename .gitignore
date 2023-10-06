@@ -1,4 +1,4 @@
 /target
 /test-data
-/benchmarks/raw
+/benchmarks_raw
 Cargo.lock

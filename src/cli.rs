@@ -1,5 +1,5 @@
 use clap::Parser;
-use log::{debug, error, info, trace, warn};
+use log::error;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -38,7 +38,7 @@ pub struct Cli {
     #[arg(
         short = 'l',
         long = "level",
-        default_value = "6",
+        default_value = "2",
         value_parser(validate_compression_level)
     )]
     pub compression_level: niffler::Level,
@@ -54,6 +54,9 @@ pub struct Cli {
     // Output reads in FASTA format
     #[arg(long, action)]
     pub output_fasta: bool,
+    // Dont output json
+    #[arg(long = "no-json")]
+    pub no_json: bool,
     // Verbose
     #[arg(short)]
     pub verbose: bool,
@@ -85,9 +88,7 @@ impl Cli {
 fn validate_compression(s: &str) -> Result<niffler::compression::Format, String> {
     match s {
         "gz" => Ok(niffler::compression::Format::Gzip),
-        "bz" => Ok(niffler::compression::Format::Bzip),
-        "lzma" => Ok(niffler::compression::Format::Lzma),
-        "zst" => Ok(niffler::compression::Format::Zstd),
+        "bz2" => Ok(niffler::compression::Format::Bzip),
         "none" => Ok(niffler::compression::Format::No),
         _ => Err(format!("Unknown compression type: {}", s)),
     }

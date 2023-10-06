@@ -1,43 +1,34 @@
-# krakenXtract
-
-[![Release](https://github.com/Sam-Sims/krakenXtract/actions/workflows/release.yaml/badge.svg)](https://github.com/Sam-Sims/krakenXtract/actions/workflows/release.yaml)
-![GitHub release (with filter)](https://img.shields.io/github/v/release/sam-sims/krakenxtract)
-![crates.io](https://img.shields.io/crates/v/krakenxtract
+[![Release](https://github.com/Sam-Sims/Kractor/actions/workflows/release.yaml/badge.svg)](https://github.com/Sam-Sims/Kractor/actions/workflows/release.yaml)
+![GitHub release (with filter)](https://img.shields.io/github/v/release/sam-sims/Kractor)
+![crates.io](https://img.shields.io/crates/v/kractor
 )
 
-Extract reads from a FASTQ file based on taxonomic classification via Kraken2.
+# Kractor
 
+**kra**ken extr**actor**
+
+Kractor extracts sequencing reads based on taxonomic classifications obtained via [Kraken2](https://github.com/DerrickWood/kraken2). It consumes paired or unpaired `fastq[.gz/.bz]` files as input alongisde a Kraken2 standard output. It can optionally consume a Kraken2 report to extract all taxonomic parents and children of a given taxid. Fast by default, it outputs `fast[q/a]` files, that can optionally be compressed.
+
+Kractor significantly enhances processing speed compared to KrakenTools for both paired and unpaired reads. Paired reads are processed approximately 21x quicker for compressed fastqs and 10x quicker for uncompressed. Unpaired reads are approximately 4x faster for both compressed and uncompressed inputs.
+
+ For additional details, refer to the [benchmarks](benchmarks/benchmarks.md)
 
 ## Motivation
 
 Heavily inspired by the great [KrakenTools](https://github.com/jenniferlu717/KrakenTools). 
 
-Having been wanting to experiment with Rust for a while, this is essentially an implementation of the `extract_kraken_reads.py` script, [re-implemented](https://www.reddit.com/media?url=https%3A%2F%2Fi.redd.it%2Fgood-for-you-crab-v0-5v9ygeh9r1c91.jpg%3Fs%3Dd759db5275e32c6e2bd5c22bddbd783acca46247) in Rust. 
-
-The main motivation was to provide a speedup when extracting a large number of reads from large FASTQ files - and to learn Rust!
-
-## Current features
-
-- Extract all reads from a `fastq` file based on a taxonomic id
-- Extract all the parents or the children of the specified taxon id
-- Supports single or paired-end `fastq` files
-- Supports both uncompressed or `gzip` inputs and outputs.
-- Multithreaded
-- ~4.4x speed up compared to KrakenTools
-
-## Benchmarks (WIP)
-
-For more detail see [benchmarks](benchmarks/benchmarks.md)
+At the time of writing KrakenTools operates as a single-threaded Python implementation which poses limitations in speed when processing large, paired-end fastq files. The main motivation was to enchance speed when parsing and extracting (writing) a large volume of reads - and also to learn rust!
 
 ## Installation
 
-### Precompiled:
-Github release: [0.3.0](https://github.com/Sam-Sims/krakenXtract/releases/tag/v0.3.0)
+### Binaries:
+
+Precompiled binaries for Linux, MacOS and Windows are attached to the latest release [0.4.0](https://github.com/Sam-Sims/Kractor/releases/tag/v0.4.0)
 
 ### Cargo:
 Requires [cargo](https://www.rust-lang.org/tools/install)
 ```
-cargo install krakenxtract
+cargo install kractor
 ```
 
 ### Build from source:
@@ -49,33 +40,33 @@ To install please refer to the rust documentation: [docs](https://www.rust-lang.
 #### Clone the repository:
 
 ```bash
-git clone https://github.com/Sam-Sims/krakenxtract
+git clone https://github.com/Sam-Sims/Kractor
 ```
 
 #### Build and add to path:
 
 ```bash
-cd kraken-extract
+cd Kractor
 cargo build --release
 export PATH=$PATH:$(pwd)/target/release
 ```
 
-All executables will be in the directory kraken-extract/target/release.
+All executables will be in the directory Kractor/target/release.
 
 ## Usage
-
+![Alt text](screenshot.png)
 ### Basic Usage:
 
 ```bash
-krakenXtract -k <kraken_output> -i <fastq_file> -t <taxonomic_id> -o <output_file>
+kractor -k <kraken_output> -i <fastq_file> -t <taxonomic_id> -o <output_file> > kractor_report.json
 ```
 Or, if you have paired-end illumina reads:
 ```bash
-krakenXtract -k <kraken_output> -i <R1_fastq_file> -i <R2_fastq_file> -t <taxonomic_id> -o <R1_output_file> -o <R2_output_file>
+kractor -k <kraken_output> -i <R1_fastq_file> -i <R2_fastq_file> -t <taxonomic_id> -o <R1_output_file> -o <R2_output_file>
 ```
 If you want to extract all children of a taxon:
 ```bash
-krakenXtract -k <kraken_output> -r <kraken_report> -i <fastq_file> -t <taxonomic_id> --children -o <output_file>
+kractor -k <kraken_output> -r <kraken_report> -i <fastq_file> -t <taxonomic_id> --children -o <output_file>
 ```
 
 ### Arguments:
@@ -86,7 +77,7 @@ krakenXtract -k <kraken_output> -r <kraken_report> -i <fastq_file> -t <taxonomic
 
 `-i, --input`
 
-This option will specify the input files containing the reads you want to extract from. They can be compressed - (`gzip`, `bzip`, `lzma`, `zstd`). Paired end reads can be specified by:
+This option will specify the input files containing the reads you want to extract from. They can be compressed - (`gz`, `bz2`). Paired end reads can be specified by:
 
 Using `--input` twice: `-i <R1_fastq_file> -i <R2_fastq_file>`
 
@@ -100,7 +91,7 @@ Using `--input` once but passing both files: `-i <R1_fastq_file> <R2_fastq_file>
 
 This option will specify the output files containing the extracted reads. The order of the output files is assumed to be the same as the input. 
 
-By default the compression will be inferred from the output file extension for supported file types (`gzip`, `bzip`, `lzma` and `zstd`). If the output type cannot be inferred, plaintext will be output.
+By default the compression will be inferred from the output file extension for supported file types (`gz`, `bz`). If the output type cannot be inferred, plaintext will be output.
 
 #### Kraken Output
 
@@ -124,17 +115,15 @@ This option will manually set the compression mode used for the output file and 
 
 Valid values are:
 
-- `gz` to output gzip
-- `bz` to output bzip
-- `lzma` to output lzma
-- `zstd` to output zstd
+- `gz` to output gz
+- `bz2` to output bz2
 - `none` to not apply compresison
 
 #### Compression level
 
 `-l, --level`
 
-This option will set the compression level to use if compressing the output. Should be a value between 1-9 with 1 being the fastest but largest file size and 9 is for slowest, but best file size. By default this is set at 6, but for the highest speeds 2 is a good trade off for speed/filesize.
+This option will set the compression level to use if compressing the output. Should be a value between 1-9 with 1 being the fastest but largest file size and 9 is for slowest, but best file size. By default this is set at 2 as it is a good trade off for speed/filesize.
 
 #### Output fasta
 
@@ -166,6 +155,12 @@ This will extract all the reads classified as decendents or subtaxa of `--taxid`
 
 This will output every read except those matching the taxid. Works with `--parents` and `--children`
 
+#### Skip report
+
+`--no-json`
+
+This will skip the json report that is output to stdout upon programme completion.
+
 ## Future plans
 
 - [x] Support unzipped fastq files
@@ -173,19 +168,22 @@ This will output every read except those matching the taxid. Works with `--paren
 - [x] `--include-parents` and `--include-children` arguments
 - [ ] Supply multiple taxonomic IDs to extract
 - [x] Exclude taxonomic IDs
-- [ ] `--append`
 - [x] `--compression-mode`
 - [x] More verbose output
-- [ ] Proper benchmarks
-- [x] Output fasta format (for blast??)
+- [x] Benchmarks
+- [x] Output fasta
 - [x] Output non `gz`
 - [ ] Tests
 
 ## Version
 
-- 0.3.0
+- 0.4.0
 
 ## Changelog
+
+### 0.4.0
+- Json report including in stdout upon successful completion (can be disabled with --no-json)
+- Renamed
 
 ### 0.3.0
 
