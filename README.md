@@ -23,7 +23,7 @@ At the time of writing KrakenTools operates as a single-threaded Python implemen
 
 ### Binaries:
 
-Precompiled binaries for Linux, MacOS and Windows are attached to the latest release [0.3.0](https://github.com/Sam-Sims/Kractor/releases/tag/v0.3.0)
+Precompiled binaries for Linux, MacOS and Windows are attached to the latest release [0.4.0](https://github.com/Sam-Sims/Kractor/releases/tag/v0.4.0)
 
 ### Cargo:
 Requires [cargo](https://www.rust-lang.org/tools/install)
@@ -168,19 +168,22 @@ This will skip the json report that is output to stdout upon programme completio
 - [x] `--include-parents` and `--include-children` arguments
 - [ ] Supply multiple taxonomic IDs to extract
 - [x] Exclude taxonomic IDs
-- [ ] `--append`
 - [x] `--compression-mode`
 - [x] More verbose output
-- [ ] Proper benchmarks
-- [x] Output fasta format (for blast??)
+- [x] Benchmarks
+- [x] Output fasta
 - [x] Output non `gz`
 - [ ] Tests
 
 ## Version
 
-- 0.3.0
+- 0.4.0
 
 ## Changelog
+
+### 0.4.0
+- Json report including in stdout upon successful completion (can be disabled with --no-json)
+- Renamed
 
 ### 0.3.0
 
