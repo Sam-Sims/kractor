@@ -9,7 +9,7 @@
 
 Kractor extracts sequencing reads based on taxonomic classifications obtained via [Kraken2](https://github.com/DerrickWood/kraken2). It consumes paired or unpaired `fastq[.gz/.bz]` files as input alongisde a Kraken2 standard output. It can optionally consume a Kraken2 report to extract all taxonomic parents and children of a given taxid. Fast by default, it outputs `fast[q/a]` files, that can optionally be compressed.
 
-Kractor significantly enhances processing speed compared to KrakenTools for both paired and unpaired reads. Paired reads see a speedup for uncompressed fastqs by approximately 10x and for compressed fastqs by about 21x.
+Kractor significantly enhances processing speed compared to KrakenTools for both paired and unpaired reads. Paired reads are processed approximately 21x quicker for compressed fastqs and 10x quicker for uncompressed. Unpaired reads are approximately 4x faster for both compressed and uncompressed inputs.
 
  For additional details, refer to the [benchmarks](benchmarks/benchmarks.md)
 
