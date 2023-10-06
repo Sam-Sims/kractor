@@ -240,7 +240,7 @@ fn build_tree_from_kraken_report(
     };
 
     {
-        let reader = io::BufReader::new(report_file);
+        let reader = BufReader::new(report_file);
         let mut prev_index = None;
 
         for line in reader.lines().flatten() {

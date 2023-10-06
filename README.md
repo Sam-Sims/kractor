@@ -7,13 +7,17 @@
 
 **kra**ken extr**actor**
 
-Kractor extracts sequencing reads based on taxonomic classifications obtained via [Kraken2](https://github.com/DerrickWood/kraken2). It consumes paired or unpaired `fastq[.gz/.bz]` files as input alongisde a Kraken2 standard output. It can optionally consume a Kraken2 report to extract all taxonomic parents and children of a given taxid. Fast by default, it outputs `fast[q/a]` files, that can optionally be compressed. Kractor significantly enhances processing speed compared to KrakenTools, improving the speed for uncompressed fastqs by approximately 24x and for compressed fastqs by about 8x. For additional details, refer to the [benchmarks](benchmarks/benchmarks.md)
+Kractor extracts sequencing reads based on taxonomic classifications obtained via [Kraken2](https://github.com/DerrickWood/kraken2). It consumes paired or unpaired `fastq[.gz/.bz]` files as input alongisde a Kraken2 standard output. It can optionally consume a Kraken2 report to extract all taxonomic parents and children of a given taxid. Fast by default, it outputs `fast[q/a]` files, that can optionally be compressed.
+
+Kractor significantly enhances processing speed compared to KrakenTools for both paired and unpaired reads. Paired reads see a speedup for uncompressed fastqs by approximately 10x and for compressed fastqs by about 21x.
+
+ For additional details, refer to the [benchmarks](benchmarks/benchmarks.md)
 
 ## Motivation
 
 Heavily inspired by the great [KrakenTools](https://github.com/jenniferlu717/KrakenTools). 
 
-At the time of writing KrakenTools is a single-threaded Python implementation that sequentially processes paired-end files. The main motivations were to enhance speed when handling and extracting a large volume of reads, particualrly paired files - and to learn Rust!
+At the time of writing KrakenTools operates as a single-threaded Python implementation which poses limitations in speed when processing large, paired-end fastq files. The main motivation was to enchance speed when parsing and extracting (writing) a large volume of reads - and also to learn rust!
 
 ## Installation
 
