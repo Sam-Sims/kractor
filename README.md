@@ -2,6 +2,8 @@
 ![GitHub release (with filter)](https://img.shields.io/github/v/release/sam-sims/Kractor)
 ![crates.io](https://img.shields.io/crates/v/kractor
 )
+![Docker Pulls](https://img.shields.io/docker/pulls/samsims/kractor)
+
 
 # Kractor
 
@@ -24,6 +26,21 @@ At the time of writing KrakenTools operates as a single-threaded Python implemen
 ### Binaries:
 
 Precompiled binaries for Linux, MacOS and Windows are attached to the latest release [0.4.0](https://github.com/Sam-Sims/Kractor/releases/tag/v0.4.0)
+
+### Docker:
+
+A docker image is availible on [Docker Hub](https://hub.docker.com/r/samsims/kractor)
+
+```bash
+docker pull samsims/kractor
+docker run samsims/kractor --help
+```
+
+Use `-v` to mount your input and output directories. A typical command might look like:
+
+```bash
+docker run -v /path/to/input:/input -v /path/to/output:/output samsims/kractor -k /input/<kraken_output> -i /input/<fastq_file> -t <taxonomic_id> -o /output/<output_fastq>
+````
 
 ### Cargo:
 Requires [cargo](https://www.rust-lang.org/tools/install)
