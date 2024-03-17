@@ -29,7 +29,7 @@ Precompiled binaries for Linux, MacOS and Windows are attached to the latest rel
 
 ### Docker:
 
-A docker image is availible on [Docker Hub](https://hub.docker.com/r/samsims/kractor)
+A docker image is available on [Docker Hub](https://hub.docker.com/r/samsims/kractor)
 
 ```bash
 docker pull samsims/kractor
