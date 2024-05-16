@@ -19,7 +19,7 @@ Kractor significantly enhances processing speed compared to KrakenTools for both
 
 Heavily inspired by the great [KrakenTools](https://github.com/jenniferlu717/KrakenTools). 
 
-At the time of writing KrakenTools operates as a single-threaded Python implementation which poses limitations in speed when processing large, paired-end fastq files. The main motivation was to enchance speed when parsing and extracting (writing) a large volume of reads - and also to learn rust!
+The main motivation was to enchance speed when parsing and extracting (writing) a large volume of reads - and also to learn rust!
 
 ## Installation
 
