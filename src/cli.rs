@@ -1,5 +1,5 @@
 use clap::Parser;
-use log::error;
+use anyhow::{Result, anyhow};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -63,25 +63,22 @@ pub struct Cli {
 }
 
 impl Cli {
-    pub fn validate_input(&self) {
+    pub fn validate_input(&self) -> Result<()> {
         let in_count = self.input.len();
         let out_count = self.output.len();
         if in_count > 2 {
-            error!("Too many input files specified. Only 1 or 2 are allowed.");
-            std::process::exit(1);
+            return Err(anyhow!("Too many input files specified. Only 1 or 2 are allowed."));
         }
         if out_count > 2 {
-            error!("Too many output files specified. Only 1 or 2 are allowed.");
-            std::process::exit(1);
+            return Err(anyhow!("Too many output files specified. Only 1 or 2 are allowed."));
         }
         if in_count == 2 && out_count == 1 {
-            error!("Two input files specified but only one output file specified.");
-            std::process::exit(1);
+            return Err(anyhow!("Two input files specified but only one output file specified."));
         }
         if in_count == 1 && out_count == 2 {
-            error!("One input file specified but two output files specified.");
-            std::process::exit(1);
+            return Err(anyhow!("One input file specified but two output files specified."));
         }
+        Ok(())
     }
 }
 
