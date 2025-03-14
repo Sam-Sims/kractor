@@ -1,5 +1,5 @@
+use anyhow::{anyhow, Result};
 use clap::Parser;
-use anyhow::{Result, anyhow};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -67,16 +67,24 @@ impl Cli {
         let in_count = self.input.len();
         let out_count = self.output.len();
         if in_count > 2 {
-            return Err(anyhow!("Too many input files specified. Only 1 or 2 are allowed."));
+            return Err(anyhow!(
+                "Too many input files specified. Only 1 or 2 are allowed."
+            ));
         }
         if out_count > 2 {
-            return Err(anyhow!("Too many output files specified. Only 1 or 2 are allowed."));
+            return Err(anyhow!(
+                "Too many output files specified. Only 1 or 2 are allowed."
+            ));
         }
         if in_count == 2 && out_count == 1 {
-            return Err(anyhow!("Two input files specified but only one output file specified."));
+            return Err(anyhow!(
+                "Two input files specified but only one output file specified."
+            ));
         }
         if in_count == 1 && out_count == 2 {
-            return Err(anyhow!("One input file specified but two output files specified."));
+            return Err(anyhow!(
+                "One input file specified but two output files specified."
+            ));
         }
         Ok(())
     }
