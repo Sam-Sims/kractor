@@ -22,28 +22,30 @@ use std::{fs, io};
 ///
 /// A KrakenRecord containing the extracted information
 fn process_kraken_output_line(kraken_output: &str) -> Result<KrakenRecord> {
-    let fields: Vec<&str> = kraken_output.split('\t').collect();
-    if fields.len() < 5 {
-        bail!("Invalid kraken output format: Expected at least 5 tab-separated fields, got {}. Line: '{}'",
-              fields.len(), kraken_output);
+    let mut fields = kraken_output.split('\t');
+
+    let classification = fields.next().ok_or_else(|| anyhow!("Missing classification field"))?;
+    let read_id = fields.next().ok_or_else(|| anyhow!("Missing read ID field"))?;
+    let taxon_id = fields.next().ok_or_else(|| anyhow!("Missing taxon ID field"))?;
+    let length = fields.next().ok_or_else(|| anyhow!("Missing length field"))?;
+    let lca_map = fields.next().ok_or_else(|| anyhow!("Missing LCA map"))?;
+
+    if fields.next().is_none() {
+        let is_classified = classification == "C";
+        let taxon_id = taxon_id
+            .trim()
+            .parse::<i32>()
+            .with_context(|| format!("Error parsing taxon ID: '{}'", taxon_id))?;
+        Ok(KrakenRecord {
+            is_classified,
+            read_id: read_id.to_string(),
+            taxon_id,
+            length: length.to_string(),
+            lca_map: lca_map.to_string(),
+        })
+    } else {
+        bail!("Invalid kraken output line format: Expected 5 tab-separated fields, but got more");
     }
-
-    let is_classified = fields[0].trim() == "C";
-    let read_id = fields[1].trim().to_string();
-    let taxon_id = fields[2]
-        .trim()
-        .parse::<i32>()
-        .with_context(|| format!("Error parsing taxon ID: '{}'", fields[2]))?;
-    let length = fields[3].trim().to_string();
-    let lca_map = fields[4].trim().to_string();
-
-    Ok(KrakenRecord {
-        is_classified,
-        read_id,
-        taxon_id,
-        length,
-        lca_map,
-    })
 }
 
 /// Processes the Kraken output file to extract read ID
@@ -118,44 +120,49 @@ pub fn process_kraken_output(
 ///
 /// A tuple containing the extracted taxon ID and its corresponding level.
 fn process_kraken_report_line(kraken_report: &str) -> Result<KrakenReportRecord> {
-    let fields: Vec<&str> = kraken_report.split('\t').collect();
-    if fields.len() < 6 {
-        bail!("Invalid kraken report line format: Expected at least 6 tab-separated fields, got {}. Line: '{}'",
-              fields.len(), kraken_report);
+    let mut fields = kraken_report.split('\t');
+
+    let percent_field = fields.next().ok_or_else(|| anyhow!("Missing percent field"))?;
+    let fragments_clade_rooted_field = fields.next().ok_or_else(|| anyhow!("Missing fragments clade rooted field"))?;
+    let fragments_taxon_field = fields.next().ok_or_else(|| anyhow!("Missing fragments taxon field"))?;
+    let rank_field = fields.next().ok_or_else(|| anyhow!("Missing rank field"))?;
+    let taxon_id_field = fields.next().ok_or_else(|| anyhow!("Missing taxon ID field"))?;
+    let name_field = fields.next().ok_or_else(|| anyhow!("Missing name field"))?;
+    if fields.next().is_none() {
+        let percent = percent_field
+            .trim()
+            .parse::<f32>()
+            .with_context(|| format!("Error parsing percent value: '{}'", percent_field))?;
+
+        let fragments_clade_rooted = fragments_clade_rooted_field
+            .trim()
+            .parse::<i32>()
+            .with_context(|| format!("Error parsing fragments clade rooted: '{}'", fragments_clade_rooted_field))?;
+
+        let fragments_taxon = fragments_taxon_field
+            .trim()
+            .parse::<i32>()
+            .with_context(|| format!("Error parsing fragments taxon: '{}'", fragments_taxon_field))?;
+
+        let taxon_id = taxon_id_field
+            .trim()
+            .parse::<i32>()
+            .with_context(|| format!("Error parsing taxon ID: '{}'", taxon_id_field))?;
+
+        let level = name_field.chars().take_while(|&c| c == ' ').count() / 2;
+
+        Ok(KrakenReportRecord {
+            percent,
+            fragments_clade_rooted,
+            fragments_taxon,
+            rank: rank_field.to_string(),
+            taxon_id,
+            level,
+            name: name_field.to_string(),
+        })
+    } else {
+        bail!("Invalid kraken report line format: Expected 6 tab-separated fields, but got more");
     }
-
-    let leading_spaces = fields[5].chars().take_while(|&c| c == ' ').count();
-    let level = leading_spaces / 2;
-
-    let percent = fields[0]
-        .trim()
-        .parse::<f32>()
-        .with_context(|| format!("Error parsing percent value: '{}'", fields[0]))?;
-
-    let fragments_clade_rooted = fields[1]
-        .trim()
-        .parse::<i32>()
-        .with_context(|| format!("Error parsing fragments clade rooted: '{}'", fields[1]))?;
-
-    let fragments_taxon = fields[2]
-        .trim()
-        .parse::<i32>()
-        .with_context(|| format!("Error parsing fragments taxon: '{}'", fields[2]))?;
-
-    let taxon_id = fields[4]
-        .trim()
-        .parse::<i32>()
-        .with_context(|| format!("Error parsing taxon ID: '{}'", fields[4]))?;
-
-    Ok(KrakenReportRecord {
-        percent,
-        fragments_clade_rooted,
-        fragments_taxon,
-        rank: fields[3].trim().to_string(),
-        taxon_id,
-        level,
-        name: fields[5].trim().to_string(),
-    })
 }
 
 /// Processes a Kraken report to build a tree of all taxa in the kraken report.
