@@ -2,33 +2,17 @@ pub use crate::cli::Cli;
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::Local;
 use clap::Parser;
-use crossbeam::channel::{self, Receiver, Sender};
+use crossbeam::channel::{self};
 use env_logger::{fmt::Color, Builder};
 use fxhash::FxHashSet;
-use lazy_static::lazy_static;
 use log::{debug, info, trace, LevelFilter};
-use noodles::{
-    fasta::{
-        self,
-        record::{Definition, Sequence},
-    },
-    fastq,
-};
-use std::{
-    collections::{HashMap, HashSet},
-    fs::{self},
-    io::{self, prelude::*, BufReader},
-    path::Path,
-    sync::{Arc, Mutex},
-    thread,
-    time::{Duration, Instant},
-};
+use noodles::fastq;
+use std::{io::prelude::*, sync::Arc, thread};
 
 pub mod models;
 pub mod parsers;
 
 mod cli;
-use models::{READS_TO_EXTRACT, TAXON_IDS, TAXON_ID_COUNT, TOTAL_READS};
 use parsers::fastx::{parse_fastq, write_output_fasta, write_output_fastq};
 use parsers::kraken::{
     build_tree_from_kraken_report, extract_children, extract_parents, process_kraken_output,

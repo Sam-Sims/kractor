@@ -5,7 +5,6 @@ use fxhash::FxHashSet;
 use log::{debug, trace};
 use noodles::fasta::record::{Definition, Sequence};
 use noodles::{fasta, fastq};
-use std::collections::HashSet;
 use std::io::BufReader;
 use std::path::Path;
 use std::sync::Arc;

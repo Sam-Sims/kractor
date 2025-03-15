@@ -1,6 +1,3 @@
-use lazy_static::lazy_static;
-use std::sync::{Arc, Mutex};
-
 #[derive(Debug, Clone)]
 pub struct Tree {
     pub taxon_id: i32,
@@ -40,9 +37,9 @@ pub struct KrakenReportRecord {
     pub name: String,
 }
 
-lazy_static! {
-    pub static ref TAXON_ID_COUNT: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
-    pub static ref TAXON_IDS: Arc<Mutex<Vec<i32>>> = Arc::new(Mutex::new(Vec::new()));
-    pub static ref TOTAL_READS: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
-    pub static ref READS_TO_EXTRACT: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
-}
+// lazy_static! {
+//     pub static ref TAXON_ID_COUNT: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+//     pub static ref TAXON_IDS: Arc<Mutex<Vec<i32>>> = Arc::new(Mutex::new(Vec::new()));
+//     pub static ref TOTAL_READS: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+//     pub static ref READS_TO_EXTRACT: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+// }

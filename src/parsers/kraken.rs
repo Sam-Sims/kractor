@@ -1,14 +1,11 @@
-use crate::models::{
-    KrakenRecord, KrakenReportRecord, Tree, READS_TO_EXTRACT, TAXON_IDS, TAXON_ID_COUNT,
-    TOTAL_READS,
-};
+use crate::models::{KrakenRecord, KrakenReportRecord, Tree};
 use anyhow::{anyhow, bail, Context, Result};
 use fxhash::FxHashSet;
 use log::{debug, info};
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::io::{BufRead, BufReader};
 use std::sync::Arc;
-use std::{fs, io};
 
 /// Parses a Kraken output line to extract taxon ID and read ID.
 ///
@@ -212,7 +209,7 @@ pub fn build_tree_from_kraken_report(
     // taxonid -> index in the nodes vector
     let mut taxon_map = HashMap::new();
 
-    let report_file = fs::File::open(&report_path)
+    let report_file = fs::File::open(report_path)
         .with_context(|| format!("Failed to open kraken report file: {}", report_path))?;
 
     let reader = BufReader::new(report_file);
