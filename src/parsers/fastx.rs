@@ -1,4 +1,5 @@
 use anyhow::Context;
+use anyhow::Result;
 use crossbeam::channel::{Receiver, Sender};
 use log::{debug, trace};
 use noodles::fasta::record::{Definition, Sequence};
@@ -21,11 +22,11 @@ use std::{fs, io};
 /// * `file_path` - A string containing the path to the FASTQ file.
 /// * `reads_to_save` - A HashMap containing read IDs and their associated taxon IDs.
 /// * `tx` - A Sender channel to send the parsed reads to the writer thread.
-pub(crate) fn parse_fastq(
+pub fn parse_fastq(
     file_path: &str,
     reads_to_save: Arc<HashSet<String>>,
     tx: &Sender<fastq::Record>,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let mut num_reads = 0;
 
     let mut last_progress_update = Instant::now();
@@ -45,8 +46,9 @@ pub(crate) fn parse_fastq(
             .with_context(|| format!("Error reading FASTQ record at position {}", record_idx))?;
 
         let read_name_bytes = record.name();
-        let read_name_string =
-            std::str::from_utf8(read_name_bytes).context("Invalid UTF-8 sequence in read name")?;
+        let read_name_string = std::str::from_utf8(read_name_bytes).with_context(|| {
+            format!("Invalid UTF-8 sequence in read name: {:?}", read_name_bytes)
+        })?;
 
         if reads_to_save.contains(&read_name_string.to_string()) {
             tx.send(record)
@@ -77,7 +79,7 @@ pub(crate) fn parse_fastq(
 /// # Returns
 ///
 /// Niffler compression format.
-fn infer_compression(file_path: &String) -> niffler::compression::Format {
+fn infer_compression(file_path: &str) -> niffler::compression::Format {
     let path = Path::new(&file_path);
     let ext = path.extension().unwrap().to_str().unwrap();
     match ext {
@@ -98,19 +100,19 @@ fn infer_compression(file_path: &String) -> niffler::compression::Format {
 /// * `out_file`: A file representing the output file where data will be written.
 /// * `output_type`: The compression type to use for the output file.
 /// * `compression_level`: The compression level to use for the output file.
-pub(crate) fn write_output_fastq(
+pub fn write_output_fastq(
     rx: Receiver<fastq::Record>,
-    out_file: String,
+    out_file: &str,
     output_type: Option<niffler::Format>,
     compression_level: niffler::Level,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let compression_type = match output_type {
         Some(output_type) => {
             debug!("Output type overridden as: {:?}", output_type);
             output_type
         }
         None => {
-            let inferred_type = infer_compression(&out_file);
+            let inferred_type = infer_compression(out_file);
             debug!("Inferred output compression type as: {:?}", inferred_type);
             inferred_type
         }
@@ -122,40 +124,37 @@ pub(crate) fn write_output_fastq(
     );
     debug!("Creating output file: {:?}", out_file);
 
-    let out_file_path = out_file.clone();
-    let out_file = fs::File::create(&out_file)
-        .with_context(|| format!("Failed to create output file: {}", out_file_path))?;
+    let out_file = fs::File::create(out_file)
+        .with_context(|| format!("Failed to create output file: {}", out_file))?;
 
     let file_handle = Box::new(io::BufWriter::new(out_file));
     let writer = niffler::get_writer(file_handle, compression_type, compression_level)
-        .context("Failed to create compressed writer")?;
+        .context("Failed to create niffler writer")?;
 
     let mut fastq_writer = fastq::Writer::new(writer);
 
     for record in rx {
         fastq_writer
             .write_record(&record)
-            .context("Error writing FASTQ record")?;
+            .with_context(|| format!("Error writing FASTQ record: {:?}", record))?;
     }
 
     Ok(())
 }
 
-pub(crate) fn write_output_fasta(
-    rx: Receiver<fastq::Record>,
-    out_file: String,
-) -> anyhow::Result<()> {
+pub fn write_output_fasta(rx: Receiver<fastq::Record>, out_file: &str) -> Result<()> {
     debug!("Creating output file: {:?}", out_file);
 
-    let out_file_path = out_file.clone();
-    let out_file = fs::File::create(&out_file)
-        .with_context(|| format!("Failed to create output file: {}", out_file_path))?;
+    let out_file = fs::File::create(out_file)
+        .with_context(|| format!("Failed to create output file: {}", out_file))?;
 
     let mut writer = fasta::Writer::new(out_file);
 
     for record in rx {
         let definition = Definition::new(
-            std::str::from_utf8(record.name()).context("Invalid UTF-8 sequence in read name")?,
+            std::str::from_utf8(record.name()).with_context(|| {
+                format!("Invalid UTF-8 sequence in read name: {:?}", record.name())
+            })?,
             None,
         );
 
@@ -163,7 +162,7 @@ pub(crate) fn write_output_fasta(
 
         writer
             .write_record(&fasta::Record::new(definition, sequence))
-            .context("Error writing FASTA record")?;
+            .with_context(|| format!("Error writing FASTA record: {:?}", record))?;
     }
 
     Ok(())
