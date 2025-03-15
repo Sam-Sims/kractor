@@ -4,6 +4,7 @@ use chrono::Local;
 use clap::Parser;
 use crossbeam::channel::{self, Receiver, Sender};
 use env_logger::{fmt::Color, Builder};
+use fxhash::FxHashSet;
 use lazy_static::lazy_static;
 use log::{debug, info, trace, LevelFilter};
 use noodles::{
@@ -22,6 +23,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+
 pub mod models;
 pub mod parsers;
 
@@ -93,7 +95,7 @@ fn collect_taxons_to_save(args: &Cli) -> Result<Vec<i32>> {
 /// * `compression_level` - The compression level to use for the output file.
 /// * `fasta` - A boolean indicating whether the output should be in FASTA format.
 fn process_single_end(
-    reads_to_save: Arc<HashSet<String>>,
+    reads_to_save: Arc<FxHashSet<Vec<u8>>>,
     input: Vec<String>,
     output: Vec<String>,
     compression_type: Option<niffler::Format>,
@@ -114,9 +116,9 @@ fn process_single_end(
         trace!("Spawning writer thread");
         move || -> Result<()> {
             if !fasta {
-                write_output_fastq(rx, output_file, compression_type, compression_level)
+                write_output_fastq(rx, &output_file, compression_type, compression_level)
             } else {
-                write_output_fasta(rx, output_file)
+                write_output_fasta(rx, &output_file)
             }
         }
     });
@@ -152,7 +154,7 @@ fn process_single_end(
 /// * `compression_level` - The compression level to use for the output files.
 /// * `fasta` - A boolean indicating whether to output in FASTA format.
 fn process_paired_end(
-    reads_to_save: Arc<HashSet<String>>,
+    reads_to_save: Arc<FxHashSet<Vec<u8>>>,
     input: Vec<String>,
     output: Vec<String>,
     compression_type: Option<niffler::Format>,
@@ -184,9 +186,9 @@ fn process_paired_end(
         trace!("Spawning writer thread 1");
         move || -> Result<()> {
             if !fasta {
-                write_output_fastq(rx1, output_file1, compression_type, compression_level)
+                write_output_fastq(rx1, &output_file1, compression_type, compression_level)
             } else {
-                write_output_fasta(rx1, output_file1)
+                write_output_fasta(rx1, &output_file1)
             }
         }
     });
@@ -195,9 +197,9 @@ fn process_paired_end(
         trace!("Spawning writer thread 2");
         move || -> Result<()> {
             if !fasta {
-                write_output_fastq(rx2, output_file2, compression_type, compression_level)
+                write_output_fastq(rx2, &output_file2, compression_type, compression_level)
             } else {
-                write_output_fasta(rx2, output_file2)
+                write_output_fasta(rx2, &output_file2)
             }
         }
     });
@@ -223,7 +225,6 @@ fn process_paired_end(
         .join()
         .map_err(|e| anyhow!("Writer thread 2 panicked: {:?}", e))?;
     writer_result2.context("Writer thread 2 operation failed")?;
-
     Ok(())
 }
 

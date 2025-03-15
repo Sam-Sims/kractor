@@ -19,6 +19,7 @@ chrono = "0.4.31"
 clap = { version = "4.3.19", features = ["derive"] }
 crossbeam = "0.8.2"
 env_logger = "0.10.0"
+fxhash = "0.2.1"
 lazy_static = "1.4.0"
 log = "0.4.20"
 niffler = { version = "2.5.0", default-features = false, features = ["gz", "bz2", "gz_cloudflare_zlib"] }

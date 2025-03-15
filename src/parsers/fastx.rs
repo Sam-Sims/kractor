@@ -1,6 +1,7 @@
 use anyhow::Context;
 use anyhow::Result;
 use crossbeam::channel::{Receiver, Sender};
+use fxhash::FxHashSet;
 use log::{debug, trace};
 use noodles::fasta::record::{Definition, Sequence};
 use noodles::{fasta, fastq};
@@ -24,7 +25,7 @@ use std::{fs, io};
 /// * `tx` - A Sender channel to send the parsed reads to the writer thread.
 pub fn parse_fastq(
     file_path: &str,
-    reads_to_save: Arc<HashSet<String>>,
+    reads_to_save: Arc<FxHashSet<Vec<u8>>>,
     tx: &Sender<fastq::Record>,
 ) -> Result<()> {
     let mut num_reads = 0;
@@ -45,16 +46,10 @@ pub fn parse_fastq(
         let record = result
             .with_context(|| format!("Error reading FASTQ record at position {}", record_idx))?;
 
-        let read_name_bytes = record.name();
-        let read_name_string = std::str::from_utf8(read_name_bytes).with_context(|| {
-            format!("Invalid UTF-8 sequence in read name: {:?}", read_name_bytes)
-        })?;
-
-        if reads_to_save.contains(&read_name_string.to_string()) {
-            tx.send(record)
-                .context("Failed to send record to writer thread")?;
+        let read_id = record.name();
+        if reads_to_save.contains(&read_id.to_vec()) {
+            tx.send(record).context("Error sending record")?;
         }
-
         num_reads += 1;
 
         if last_progress_update.elapsed() >= PROGRESS_UPDATE_INTERVAL {

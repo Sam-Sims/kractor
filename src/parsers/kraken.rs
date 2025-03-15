@@ -3,6 +3,7 @@ use crate::models::{
     TOTAL_READS,
 };
 use anyhow::{anyhow, bail, Context, Result};
+use fxhash::FxHashSet;
 use log::{debug, info};
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader};
@@ -24,10 +25,18 @@ use std::{fs, io};
 fn process_kraken_output_line(kraken_output: &str) -> Result<KrakenRecord> {
     let mut fields = kraken_output.split('\t');
 
-    let classification = fields.next().ok_or_else(|| anyhow!("Missing classification field"))?;
-    let read_id = fields.next().ok_or_else(|| anyhow!("Missing read ID field"))?;
-    let taxon_id = fields.next().ok_or_else(|| anyhow!("Missing taxon ID field"))?;
-    let length = fields.next().ok_or_else(|| anyhow!("Missing length field"))?;
+    let classification = fields
+        .next()
+        .ok_or_else(|| anyhow!("Missing classification field"))?;
+    let read_id = fields
+        .next()
+        .ok_or_else(|| anyhow!("Missing read ID field"))?;
+    let taxon_id = fields
+        .next()
+        .ok_or_else(|| anyhow!("Missing taxon ID field"))?;
+    let length = fields
+        .next()
+        .ok_or_else(|| anyhow!("Missing length field"))?;
     let lca_map = fields.next().ok_or_else(|| anyhow!("Missing LCA map"))?;
 
     if fields.next().is_none() {
@@ -38,7 +47,7 @@ fn process_kraken_output_line(kraken_output: &str) -> Result<KrakenRecord> {
             .with_context(|| format!("Error parsing taxon ID: '{}'", taxon_id))?;
         Ok(KrakenRecord {
             is_classified,
-            read_id: read_id.to_string(),
+            read_id: read_id.as_bytes().to_vec(),
             taxon_id,
             length: length.to_string(),
             lca_map: lca_map.to_string(),
@@ -66,14 +75,13 @@ pub fn process_kraken_output(
     kraken_path: &str,
     exclude: bool,
     taxon_ids_to_save: &[i32],
-) -> Result<Arc<HashSet<String>>> {
+) -> Result<Arc<FxHashSet<Vec<u8>>>> {
     info!("Processing kraken output...");
     let taxon_ids_to_save: HashSet<i32> = taxon_ids_to_save.iter().cloned().collect();
-    let mut reads_to_save = HashSet::new();
-    let kraken_file = fs::File::open(&kraken_path)
+    let mut reads_to_save = FxHashSet::default();
+    let kraken_file = fs::File::open(kraken_path)
         .with_context(|| format!("Failed to open kraken output file: {}", kraken_path))?;
     let reader = BufReader::new(kraken_file);
-    let mut total_reads = 0;
 
     for line_result in reader.lines() {
         let line = line_result.context("Error reading kraken output line")?;
@@ -83,7 +91,6 @@ pub fn process_kraken_output(
         {
             reads_to_save.insert(record.read_id);
         }
-        total_reads += 1;
     }
     // let mut taxon_id_count = TAXON_ID_COUNT
     //     .lock()
@@ -122,12 +129,22 @@ pub fn process_kraken_output(
 fn process_kraken_report_line(kraken_report: &str) -> Result<KrakenReportRecord> {
     let mut fields = kraken_report.split('\t');
 
-    let percent_field = fields.next().ok_or_else(|| anyhow!("Missing percent field"))?;
-    let fragments_clade_rooted_field = fields.next().ok_or_else(|| anyhow!("Missing fragments clade rooted field"))?;
-    let fragments_taxon_field = fields.next().ok_or_else(|| anyhow!("Missing fragments taxon field"))?;
+    let percent_field = fields
+        .next()
+        .ok_or_else(|| anyhow!("Missing percent field"))?;
+    let fragments_clade_rooted_field = fields
+        .next()
+        .ok_or_else(|| anyhow!("Missing fragments clade rooted field"))?;
+    let fragments_taxon_field = fields
+        .next()
+        .ok_or_else(|| anyhow!("Missing fragments taxon field"))?;
     let rank_field = fields.next().ok_or_else(|| anyhow!("Missing rank field"))?;
-    let taxon_id_field = fields.next().ok_or_else(|| anyhow!("Missing taxon ID field"))?;
-    let name_field = fields.next().ok_or_else(|| anyhow!("Missing name field"))?;
+    let taxon_id_field = fields
+        .next()
+        .ok_or_else(|| anyhow!("Missing taxon ID field"))?;
+    let name_field = fields
+        .next()
+        .ok_or_else(|| anyhow!("Missing taxon name field"))?;
     if fields.next().is_none() {
         let percent = percent_field
             .trim()
@@ -137,12 +154,19 @@ fn process_kraken_report_line(kraken_report: &str) -> Result<KrakenReportRecord>
         let fragments_clade_rooted = fragments_clade_rooted_field
             .trim()
             .parse::<i32>()
-            .with_context(|| format!("Error parsing fragments clade rooted: '{}'", fragments_clade_rooted_field))?;
+            .with_context(|| {
+                format!(
+                    "Error parsing fragments clade rooted: '{}'",
+                    fragments_clade_rooted_field
+                )
+            })?;
 
         let fragments_taxon = fragments_taxon_field
             .trim()
             .parse::<i32>()
-            .with_context(|| format!("Error parsing fragments taxon: '{}'", fragments_taxon_field))?;
+            .with_context(|| {
+                format!("Error parsing fragments taxon: '{}'", fragments_taxon_field)
+            })?;
 
         let taxon_id = taxon_id_field
             .trim()
@@ -191,47 +215,47 @@ pub fn build_tree_from_kraken_report(
     let report_file = fs::File::open(&report_path)
         .with_context(|| format!("Failed to open kraken report file: {}", report_path))?;
 
-        let reader = BufReader::new(report_file);
-        let mut prev_index = None;
+    let reader = BufReader::new(report_file);
+    let mut prev_index = None;
 
-        for line in reader.lines() {
-            let line = line.context("Error reading kraken report line")?;
-            let record = process_kraken_report_line(&line)?;
-            // if taxon_id == 0, it's an unclassified read so we can skip
-            if record.taxon_id == 0 {
-                continue;
-            }
-            // 1 will be the root of the tree
-            if record.taxon_id == 1 {
-                let root_node = Tree::new(record.taxon_id, record.level, None);
-                prev_index = Some(nodes.len());
-                nodes.push(root_node);
-            }
-            // if the current level is not the same as the previous level + 1, then we are not at the correct parent, and need to move up the tree
-            while let Some(parent_index) = prev_index {
-                if record.level != nodes[parent_index].level_num + 1 {
-                    prev_index = nodes[parent_index].parent;
-                } else {
-                    break;
-                }
-            }
-            // once we have the correct parent, we can add the current node to the tree
-            let curr_node = Tree::new(record.taxon_id, record.level, prev_index);
-            let curr_index = nodes.len();
-            nodes.push(curr_node);
-
-            // add the current node
-            if let Some(parent_index) = prev_index {
-                nodes[parent_index].children.push(curr_index);
-            }
-
-            prev_index = Some(curr_index);
-
-            // if the current taxon is one we want to save, add it to the map
-            if record.taxon_id == taxon_to_save {
-                taxon_map.insert(record.taxon_id, curr_index);
+    for line in reader.lines() {
+        let line = line.context("Error reading kraken report line")?;
+        let record = process_kraken_report_line(&line)?;
+        // if taxon_id == 0, it's an unclassified read so we can skip
+        if record.taxon_id == 0 {
+            continue;
+        }
+        // 1 will be the root of the tree
+        if record.taxon_id == 1 {
+            let root_node = Tree::new(record.taxon_id, record.level, None);
+            prev_index = Some(nodes.len());
+            nodes.push(root_node);
+        }
+        // if the current level is not the same as the previous level + 1, then we are not at the correct parent, and need to move up the tree
+        while let Some(parent_index) = prev_index {
+            if record.level != nodes[parent_index].level_num + 1 {
+                prev_index = nodes[parent_index].parent;
+            } else {
+                break;
             }
         }
+        // once we have the correct parent, we can add the current node to the tree
+        let curr_node = Tree::new(record.taxon_id, record.level, prev_index);
+        let curr_index = nodes.len();
+        nodes.push(curr_node);
+
+        // add the current node
+        if let Some(parent_index) = prev_index {
+            nodes[parent_index].children.push(curr_index);
+        }
+
+        prev_index = Some(curr_index);
+
+        // if the current taxon is one we want to save, add it to the map
+        if record.taxon_id == taxon_to_save {
+            taxon_map.insert(record.taxon_id, curr_index);
+        }
+    }
 
     if !taxon_map.contains_key(&taxon_to_save) {
         bail!("Taxon ID {} not found in the kraken report", taxon_to_save);

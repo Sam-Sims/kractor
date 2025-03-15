@@ -23,7 +23,7 @@ impl Tree {
 #[derive(Debug, Clone)]
 pub struct KrakenRecord {
     pub is_classified: bool,
-    pub read_id: String,
+    pub read_id: Vec<u8>,
     pub taxon_id: i32,
     pub length: String,
     pub lca_map: String,
