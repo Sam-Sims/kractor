@@ -1,5 +1,8 @@
-use crate::models::{KrakenRecord, KrakenReportRecord, Tree, TAXON_ID_COUNT, TAXON_IDS, TOTAL_READS, READS_TO_EXTRACT};
-use anyhow::{anyhow, bail, Context};
+use crate::models::{
+    KrakenRecord, KrakenReportRecord, Tree, READS_TO_EXTRACT, TAXON_IDS, TAXON_ID_COUNT,
+    TOTAL_READS,
+};
+use anyhow::{anyhow, bail, Context, Result};
 use log::{debug, info};
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader};
@@ -17,20 +20,29 @@ use std::{fs, io};
 ///
 /// # Returns
 ///
-/// A tuple containing the extracted taxon ID and the read ID
-fn process_kraken_output_line(kraken_output: &str) -> anyhow::Result<(KrakenRecord)> {
+/// A KrakenRecord containing the extracted information
+fn process_kraken_output_line(kraken_output: &str) -> Result<KrakenRecord> {
     let fields: Vec<&str> = kraken_output.split('\t').collect();
-    if fields.len() < 4 {
-        bail!("Invalid kraken output format: Expected at least 4 tab-separated fields, got {}. Line: '{}'",
+    if fields.len() < 5 {
+        bail!("Invalid kraken output format: Expected at least 5 tab-separated fields, got {}. Line: '{}'",
               fields.len(), kraken_output);
     }
 
+    let is_classified = fields[0].trim() == "C";
+    let read_id = fields[1].trim().to_string();
+    let taxon_id = fields[2]
+        .trim()
+        .parse::<i32>()
+        .with_context(|| format!("Error parsing taxon ID: '{}'", fields[2]))?;
+    let length = fields[3].trim().to_string();
+    let lca_map = fields[4].trim().to_string();
+
     Ok(KrakenRecord {
-        is_classified: fields[0].trim() == "C",
-        read_id: fields[1].trim().to_string(),
-        taxon_id: fields[2].trim().parse::<i32>().context("Error parsing taxon ID")?,
-        length: fields[3].trim().to_string(),
-        lca_map: fields[4].trim().to_string(),
+        is_classified,
+        read_id,
+        taxon_id,
+        length,
+        lca_map,
     })
 }
 
@@ -48,50 +60,48 @@ fn process_kraken_output_line(kraken_output: &str) -> anyhow::Result<(KrakenReco
 /// # Returns
 ///
 /// A hashmap containing the read IDs to save as keys and the taxon IDs as values.
-pub(crate) fn process_kraken_output(
-    kraken_path: String,
+pub fn process_kraken_output(
+    kraken_path: &str,
     exclude: bool,
-    taxon_ids_to_save: Vec<i32>,
-) -> anyhow::Result<Arc<HashSet<String>>> {
+    taxon_ids_to_save: &[i32],
+) -> Result<Arc<HashSet<String>>> {
     info!("Processing kraken output...");
+    let taxon_ids_to_save: HashSet<i32> = taxon_ids_to_save.iter().cloned().collect();
     let mut reads_to_save = HashSet::new();
     let kraken_file = fs::File::open(&kraken_path)
         .with_context(|| format!("Failed to open kraken output file: {}", kraken_path))?;
-    let reader = io::BufReader::new(kraken_file);
+    let reader = BufReader::new(kraken_file);
     let mut total_reads = 0;
 
     for line_result in reader.lines() {
         let line = line_result.context("Error reading kraken output line")?;
         let record = process_kraken_output_line(&line)?;
-        if exclude {
-            if !taxon_ids_to_save.contains(&record.taxon_id) {
-                reads_to_save.insert(record.read_id);
-            }
-        } else if taxon_ids_to_save.contains(&record.taxon_id) {
+        if (exclude && !taxon_ids_to_save.contains(&record.taxon_id))
+            || (!exclude && taxon_ids_to_save.contains(&record.taxon_id))
+        {
             reads_to_save.insert(record.read_id);
         }
         total_reads += 1;
     }
-    let mut taxon_id_count = TAXON_ID_COUNT
-        .lock()
-        .map_err(|e| anyhow!("Failed to lock TAXON_ID_COUNT mutex: {}", e))?;
-    let mut taxon_ids = TAXON_IDS
-        .lock()
-        .map_err(|e| anyhow!("Failed to lock TAXON_IDS mutex: {}", e))?;
-    let mut total_read_count = TOTAL_READS
-        .lock()
-        .map_err(|e| anyhow!("Failed to lock TOTAL_READS mutex: {}", e))?;
-    let mut reads_to_extract = READS_TO_EXTRACT
-        .lock()
-        .map_err(|e| anyhow!("Failed to lock READS_TO_EXTRACT mutex: {}", e))?;
+    // let mut taxon_id_count = TAXON_ID_COUNT
+    //     .lock()
+    //     .map_err(|e| anyhow!("Failed to lock TAXON_ID_COUNT mutex: {}", e))?;
+    // let mut taxon_ids = TAXON_IDS
+    //     .lock()
+    //     .map_err(|e| anyhow!("Failed to lock TAXON_IDS mutex: {}", e))?;
+    // let mut total_read_count = TOTAL_READS
+    //     .lock()
+    //     .map_err(|e| anyhow!("Failed to lock TOTAL_READS mutex: {}", e))?;
+    // let mut reads_to_extract = READS_TO_EXTRACT
+    //     .lock()
+    //     .map_err(|e| anyhow!("Failed to lock READS_TO_EXTRACT mutex: {}", e))?;
+    //
+    // *taxon_id_count = taxon_ids_to_save.len();
+    // *taxon_ids = taxon_ids_to_save;
+    // *total_read_count = total_reads; // Update this with the actual total_reads value
+    // *reads_to_extract = reads_to_save.len();
 
-    *taxon_id_count = taxon_ids_to_save.len();
-    *taxon_ids = taxon_ids_to_save;
-    *total_read_count = total_reads; // Update this with the actual total_reads value
-    *reads_to_extract = reads_to_save.len();
-
-    let reads_to_save: Arc<HashSet<String>> = Arc::new(reads_to_save);
-    Ok(reads_to_save)
+    Ok(Arc::new(reads_to_save))
 }
 
 /// Parses a Kraken report line to extract taxon ID and its corresponding level.
@@ -107,28 +117,42 @@ pub(crate) fn process_kraken_output(
 /// # Returns
 ///
 /// A tuple containing the extracted taxon ID and its corresponding level.
-fn process_kraken_report_line(kraken_report: &str) -> anyhow::Result<KrakenReportRecord> {
+fn process_kraken_report_line(kraken_report: &str) -> Result<KrakenReportRecord> {
     let fields: Vec<&str> = kraken_report.split('\t').collect();
     if fields.len() < 6 {
         bail!("Invalid kraken report line format: Expected at least 6 tab-separated fields, got {}. Line: '{}'",
               fields.len(), kraken_report);
     }
 
-    let mut spaces = 0;
-    for char in fields[5].chars() {
-        if char == ' ' {
-            spaces += 1;
-        } else {
-            break;
-        }
-    }
-    let level = spaces / 2;
+    let leading_spaces = fields[5].chars().take_while(|&c| c == ' ').count();
+    let level = leading_spaces / 2;
+
+    let percent = fields[0]
+        .trim()
+        .parse::<f32>()
+        .with_context(|| format!("Error parsing percent value: '{}'", fields[0]))?;
+
+    let fragments_clade_rooted = fields[1]
+        .trim()
+        .parse::<i32>()
+        .with_context(|| format!("Error parsing fragments clade rooted: '{}'", fields[1]))?;
+
+    let fragments_taxon = fields[2]
+        .trim()
+        .parse::<i32>()
+        .with_context(|| format!("Error parsing fragments taxon: '{}'", fields[2]))?;
+
+    let taxon_id = fields[4]
+        .trim()
+        .parse::<i32>()
+        .with_context(|| format!("Error parsing taxon ID: '{}'", fields[4]))?;
+
     Ok(KrakenReportRecord {
-        percent: fields[0].trim().parse::<f32>().context("Error parsing percent")?,
-        fragments_clade_rooted: fields[1].trim().parse::<i32>().context("Error parsing fragments clade rooted")?,
-        fragments_taxon: fields[2].trim().parse::<i32>().context("Error parsing fragments taxon")?,
+        percent,
+        fragments_clade_rooted,
+        fragments_taxon,
         rank: fields[3].trim().to_string(),
-        taxon_id: fields[4].trim().parse::<i32>().context("Error parsing taxon ID")?,
+        taxon_id,
         level,
         name: fields[5].trim().to_string(),
     })
@@ -147,10 +171,10 @@ fn process_kraken_report_line(kraken_report: &str) -> anyhow::Result<KrakenRepor
 /// # Returns
 ///
 /// A tuple containing the tree and a hashmap mapping the saved taxon IDs to the tree.
-pub(crate) fn build_tree_from_kraken_report(
+pub fn build_tree_from_kraken_report(
     taxon_to_save: i32,
-    report_path: String,
-) -> anyhow::Result<(Vec<Tree>, HashMap<i32, usize>)> {
+    report_path: &str,
+) -> Result<(Vec<Tree>, HashMap<i32, usize>)> {
     debug!("Building taxonomic tree from kraken report");
     // will store the tree
     let mut nodes = Vec::new();
@@ -160,11 +184,11 @@ pub(crate) fn build_tree_from_kraken_report(
     let report_file = fs::File::open(&report_path)
         .with_context(|| format!("Failed to open kraken report file: {}", report_path))?;
 
-    {
         let reader = BufReader::new(report_file);
         let mut prev_index = None;
 
-        for line in reader.lines().flatten() {
+        for line in reader.lines() {
+            let line = line.context("Error reading kraken report line")?;
             let record = process_kraken_report_line(&line)?;
             // if taxon_id == 0, it's an unclassified read so we can skip
             if record.taxon_id == 0 {
@@ -201,7 +225,6 @@ pub(crate) fn build_tree_from_kraken_report(
                 taxon_map.insert(record.taxon_id, curr_index);
             }
         }
-    }
 
     if !taxon_map.contains_key(&taxon_to_save) {
         bail!("Taxon ID {} not found in the kraken report", taxon_to_save);
@@ -223,22 +246,33 @@ pub(crate) fn build_tree_from_kraken_report(
 /// # Returns
 ///
 /// A vector containing the taxon IDs of the lineage of parent nodes, including the provided taxon ID.
-pub(crate) fn extract_parents(
+pub fn extract_parents(
     taxon_map: &HashMap<i32, usize>,
     nodes: &[Tree],
     taxon_id: i32,
-) -> Vec<i32> {
+) -> Result<Vec<i32>> {
     // Backtracking traversal from the given taxon_id to the root
+    let start_index = taxon_map
+        .get(&taxon_id)
+        .ok_or_else(|| anyhow!("Taxon ID {} not found in taxonomy map", taxon_id))?;
+
     let mut parents = Vec::new();
     parents.push(taxon_id);
-    let mut curr_index = taxon_map[&taxon_id];
+    let mut curr_index = *start_index;
 
     while let Some(parent_index) = nodes[curr_index].parent {
+        if parent_index >= nodes.len() {
+            bail!(
+                "Invalid parent index {} for node at index {}",
+                parent_index,
+                curr_index
+            );
+        }
         parents.push(nodes[parent_index].taxon_id);
         curr_index = parent_index;
     }
 
-    parents
+    Ok(parents)
 }
 
 /// Extracts the taxon IDs of children nodes from a given taxon ID.
@@ -256,10 +290,25 @@ pub(crate) fn extract_parents(
 /// # Returns
 ///
 /// A vector containing the taxon IDs of the children of the specified taxon ID, including the provided taxon ID.
-pub(crate) fn extract_children(nodes: &Vec<Tree>, start_index: usize, result: &mut Vec<i32>) {
+pub fn extract_children(nodes: &[Tree], start_index: usize, result: &mut Vec<i32>) -> Result<()> {
     // recursive post-order traversal of the tree
+    if start_index >= nodes.len() {
+        bail!(
+            "Invalid start index {} for node in tree of length {}",
+            start_index,
+            nodes.len()
+        );
+    }
     for &child_index in &nodes[start_index].children {
-        extract_children(nodes, child_index, result);
+        if child_index >= nodes.len() {
+            bail!(
+                "Invalid child index {} for node at index {}",
+                child_index,
+                start_index
+            );
+        }
+        extract_children(nodes, child_index, result)?;
     }
     result.push(nodes[start_index].taxon_id);
+    Ok(())
 }

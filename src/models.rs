@@ -4,13 +4,13 @@ use std::sync::{Arc, Mutex};
 #[derive(Debug, Clone)]
 pub struct Tree {
     pub taxon_id: i32,
-    pub level_num: i32,
+    pub level_num: usize,
     pub children: Vec<usize>,
     pub parent: Option<usize>,
 }
 
 impl Tree {
-    pub fn new(taxon_id: i32, level_num: i32, parent: Option<usize>) -> Tree {
+    pub fn new(taxon_id: i32, level_num: usize, parent: Option<usize>) -> Tree {
         Tree {
             taxon_id,
             level_num,
@@ -36,7 +36,7 @@ pub struct KrakenReportRecord {
     pub fragments_taxon: i32,
     pub rank: String,
     pub taxon_id: i32,
-    pub level: i32,
+    pub level: usize,
     pub name: String,
 }
 

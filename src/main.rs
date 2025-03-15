@@ -52,15 +52,15 @@ fn collect_taxons_to_save(args: &Cli) -> Result<Vec<i32>> {
     if args.report.is_some() {
         info!("Processing kraken report...");
         let report_path = args.report.clone().unwrap();
-        let (nodes, taxon_map) = build_tree_from_kraken_report(args.taxid, report_path)?;
+        let (nodes, taxon_map) = build_tree_from_kraken_report(args.taxid, &report_path)?;
         if args.children {
             debug!("Extracting children");
             let mut children = Vec::new();
-            extract_children(&nodes, taxon_map[&args.taxid], &mut children);
+            extract_children(&nodes, taxon_map[&args.taxid], &mut children)?;
             taxon_ids_to_save.extend(&children);
         } else if args.parents {
             debug!("Extracting parents");
-            taxon_ids_to_save.extend(extract_parents(&taxon_map, &nodes, args.taxid));
+            taxon_ids_to_save.extend(extract_parents(&taxon_map, &nodes, args.taxid)?);
         } else {
             taxon_ids_to_save.push(args.taxid);
         }
@@ -276,7 +276,7 @@ fn main() -> Result<()> {
 
     //collect the taxon IDs to save and map those to read IDs
     let taxon_ids_to_save = collect_taxons_to_save(&args)?;
-    let reads_to_save = process_kraken_output(args.kraken, args.exclude, taxon_ids_to_save)?;
+    let reads_to_save = process_kraken_output(&args.kraken, args.exclude, &taxon_ids_to_save)?;
 
     //check if paired-end reads are provided
     let paired = args.input.len() == 2;
@@ -305,23 +305,23 @@ fn main() -> Result<()> {
     info!("Complete!");
 
     if !args.no_json {
-        let stats = serde_json::json!({
-            "taxon_id_count": *TAXON_ID_COUNT.lock()
-                .map_err(|e| anyhow!("Failed to lock TAXON_ID_COUNT mutex: {}", e))?,
-            "taxon_ids": *TAXON_IDS.lock()
-                .map_err(|e| anyhow!("Failed to lock TAXON_IDS mutex: {}", e))?,
-            "reads_in": *TOTAL_READS.lock()
-                .map_err(|e| anyhow!("Failed to lock TOTAL_READS mutex: {}", e))?,
-            "reads_out": *READS_TO_EXTRACT.lock()
-                .map_err(|e| anyhow!("Failed to lock READS_TO_EXTRACT mutex: {}", e))?,
-            "input_format": if paired { "paired-end" } else { "single-end" },
-            "output_format": if args.output_fasta { "fasta" } else { "fastq" },
-        });
+        // let stats = serde_json::json!({
+        //     "taxon_id_count": *TAXON_ID_COUNT.lock()
+        //         .map_err(|e| anyhow!("Failed to lock TAXON_ID_COUNT mutex: {}", e))?,
+        //     "taxon_ids": *TAXON_IDS.lock()
+        //         .map_err(|e| anyhow!("Failed to lock TAXON_IDS mutex: {}", e))?,
+        //     "reads_in": *TOTAL_READS.lock()
+        //         .map_err(|e| anyhow!("Failed to lock TOTAL_READS mutex: {}", e))?,
+        //     "reads_out": *READS_TO_EXTRACT.lock()
+        //         .map_err(|e| anyhow!("Failed to lock READS_TO_EXTRACT mutex: {}", e))?,
+        //     "input_format": if paired { "paired-end" } else { "single-end" },
+        //     "output_format": if args.output_fasta { "fasta" } else { "fastq" },
+        // });
 
-        let stats_json =
-            serde_json::to_string_pretty(&stats).context("Failed to serialize stats to JSON")?;
-
-        println!("{}", stats_json);
+        // let stats_json =
+        //     serde_json::to_string_pretty(&stats).context("Failed to serialize stats to JSON")?;
+        //
+        // println!("{}", stats_json);
     }
 
     Ok(())
