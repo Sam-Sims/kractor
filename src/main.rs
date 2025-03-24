@@ -31,30 +31,42 @@ use parsers::kraken::{
 /// # Returns
 ///
 /// A vector of taxon IDs that need to be saved.
-fn collect_taxons_to_save(args: &Cli) -> Result<Vec<i32>> {
+fn collect_taxons_to_save(
+    report: Option<String>,
+    children: bool,
+    parents: bool,
+    taxid: i32,
+) -> Result<Vec<i32>> {
     //TODO refactor this not to use the entire args struct
     let mut taxon_ids_to_save = Vec::new();
-    if args.report.is_some() {
+
+    // I dont think we will reach this code ever since clap should catch this - but in case it doesnt
+    if (parents || children) && report.is_none() {
+        return Err(anyhow::anyhow!(
+            "Report required when parents or children is enabled"
+        ));
+    }
+
+    if let Some(report_path) = report {
         info!("Processing kraken report...");
-        let report_path = args.report.clone().unwrap();
-        let (nodes, taxon_map) = build_tree_from_kraken_report(args.taxid, &report_path)?;
-        if args.children {
+        let (nodes, taxon_map) = build_tree_from_kraken_report(taxid, &report_path)?;
+        if children {
             debug!("Extracting children");
             let mut children = Vec::new();
-            extract_children(&nodes, taxon_map[&args.taxid], &mut children)?;
+            extract_children(&nodes, taxon_map[&taxid], &mut children)?;
             taxon_ids_to_save.extend(&children);
-        } else if args.parents {
+        } else if parents {
             debug!("Extracting parents");
-            taxon_ids_to_save.extend(extract_parents(&taxon_map, &nodes, args.taxid)?);
+            taxon_ids_to_save.extend(extract_parents(&taxon_map, &nodes, taxid)?);
         } else {
-            taxon_ids_to_save.push(args.taxid);
+            taxon_ids_to_save.push(taxid);
         }
     } else {
         debug!(
             "No kraken report provided - extracting reads for taxon ID {} only",
-            args.taxid
+            taxid
         );
-        taxon_ids_to_save.push(args.taxid);
+        taxon_ids_to_save.push(taxid);
     }
     debug!("Taxon IDs identified: {:?}", taxon_ids_to_save);
     if taxon_ids_to_save.is_empty() {
@@ -259,7 +271,8 @@ fn main() -> Result<()> {
     args.validate_input()?;
 
     //collect the taxon IDs to save and map those to read IDs
-    let taxon_ids_to_save = collect_taxons_to_save(&args)?;
+    let taxon_ids_to_save =
+        collect_taxons_to_save(args.report, args.children, args.parents, args.taxid)?;
     let reads_to_save = process_kraken_output(&args.kraken, args.exclude, &taxon_ids_to_save)?;
 
     //check if paired-end reads are provided

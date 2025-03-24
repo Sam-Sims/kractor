@@ -22,7 +22,7 @@ pub struct Cli {
     )]
     pub kraken: String,
     // Kraken2 report file
-    #[arg(short = 'r', long = "report", value_parser(check_input_exists))]
+    #[arg(short = 'r', long = "report", value_parser(check_input_exists), required_if_eq_any([("parents", "true"), ("children", "true")]))]
     pub report: Option<String>,
     // Taxid to extract reads for
     #[arg(short = 't', long = "taxid", required = true)]
