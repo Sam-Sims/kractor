@@ -6,7 +6,7 @@ use crossbeam::channel;
 use crossbeam::thread;
 use env_logger::{fmt::Color, Builder};
 use fxhash::FxHashSet;
-use log::{debug, info, trace, LevelFilter};
+use log::{debug, info, LevelFilter};
 use noodles::fastq;
 use std::io::prelude::*;
 use std::path::PathBuf;
@@ -50,7 +50,7 @@ fn collect_taxons_to_save(
 
     if let Some(report_path) = report {
         info!("Processing kraken report...");
-        let (nodes, taxon_map) = build_tree_from_kraken_report(taxid, &report_path)?;
+        let (nodes, taxon_map) = build_tree_from_kraken_report(taxid, report_path)?;
         if children {
             debug!("Extracting children");
             let mut children = Vec::new();
