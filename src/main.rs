@@ -37,7 +37,6 @@ fn collect_taxons_to_save(
     parents: bool,
     taxid: i32,
 ) -> Result<Vec<i32>> {
-    //TODO refactor this not to use the entire args struct
     let mut taxon_ids_to_save = Vec::new();
 
     // I dont think we will reach this code ever since clap should catch this - but in case it doesnt
@@ -103,8 +102,7 @@ fn process_single_end(
     let reader_thread = thread::spawn({
         trace!("Spawning reader thread");
         let reads_to_save_arc = reads_to_save.clone();
-        let tx_clone = tx.clone();
-        move || -> Result<()> { parse_fastq(&input[0], reads_to_save_arc, &tx_clone) }
+        move || -> Result<()> { parse_fastq(&input[0], reads_to_save_arc, &tx) }
     });
 
     let writer_thread = thread::spawn({
@@ -166,15 +164,13 @@ fn process_paired_end(
     let reader_thread1 = thread::spawn({
         trace!("Spawning reader thread 1");
         let reads_to_save_arc = reads_to_save.clone();
-        let tx_clone = tx1.clone();
-        move || -> Result<()> { parse_fastq(&input_file1, reads_to_save_arc, &tx_clone) }
+        move || -> Result<()> { parse_fastq(&input_file1, reads_to_save_arc, &tx1) }
     });
 
     let reader_thread2 = thread::spawn({
         trace!("Spawning reader thread 2");
         let reads_to_save_arc = reads_to_save.clone();
-        let tx_clone = tx2.clone();
-        move || -> Result<()> { parse_fastq(&input_file2, reads_to_save_arc, &tx_clone) }
+        move || -> Result<()> { parse_fastq(&input_file2, reads_to_save_arc, &tx2) }
     });
 
     let writer_thread1 = thread::spawn({
