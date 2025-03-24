@@ -9,7 +9,6 @@ use log::{debug, info, trace, LevelFilter};
 use noodles::fastq;
 use std::{io::prelude::*, sync::Arc, thread};
 
-pub mod models;
 pub mod parsers;
 
 mod cli;

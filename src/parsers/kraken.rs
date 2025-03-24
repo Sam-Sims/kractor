@@ -1,4 +1,3 @@
-use crate::models::{KrakenRecord, KrakenReportRecord, Tree};
 use anyhow::{anyhow, bail, Context, Result};
 use fxhash::FxHashSet;
 use log::{debug, info};
@@ -7,6 +6,44 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::sync::Arc;
 
+#[derive(Debug, Clone)]
+pub struct Tree {
+    pub taxon_id: i32,
+    pub level_num: usize,
+    pub children: Vec<usize>,
+    pub parent: Option<usize>,
+}
+
+impl Tree {
+    pub fn new(taxon_id: i32, level_num: usize, parent: Option<usize>) -> Tree {
+        Tree {
+            taxon_id,
+            level_num,
+            children: Vec::new(),
+            parent,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct KrakenRecord {
+    pub is_classified: bool,
+    pub read_id: Vec<u8>,
+    pub taxon_id: i32,
+    pub length: String,
+    pub lca_map: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct KrakenReportRecord {
+    pub percent: f32,
+    pub fragments_clade_rooted: i32,
+    pub fragments_taxon: i32,
+    pub rank: String,
+    pub taxon_id: i32,
+    pub level: usize,
+    pub name: String,
+}
 /// Parses a Kraken output line to extract taxon ID and read ID.
 ///
 /// This function takes a Kraken output line and processes it to extract the taxon ID and read ID.
