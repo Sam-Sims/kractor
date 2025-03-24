@@ -238,7 +238,7 @@ fn process_kraken_report_line(kraken_report: &str) -> Result<KrakenReportRecord>
 /// A tuple containing the tree and a hashmap mapping the saved taxon IDs to the tree.
 pub fn build_tree_from_kraken_report(
     taxon_to_save: i32,
-    report_path: &&PathBuf,
+    report_path: &PathBuf,
 ) -> Result<(Vec<Tree>, HashMap<i32, usize>)> {
     debug!("Building taxonomic tree from kraken report");
     // will store the tree
