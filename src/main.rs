@@ -2,13 +2,13 @@ pub use crate::cli::Cli;
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::Local;
 use clap::Parser;
-use crossbeam::channel::{self};
+use crossbeam::channel;
+use crossbeam::thread;
 use env_logger::{fmt::Color, Builder};
 use fxhash::FxHashSet;
 use log::{debug, info, trace, LevelFilter};
 use noodles::fastq;
-use std::{io::prelude::*, sync::Arc, thread};
-
+use std::io::prelude::*;
 pub mod parsers;
 
 mod cli;
@@ -89,44 +89,41 @@ fn collect_taxons_to_save(
 /// * `compression_level` - The compression level to use for the output file.
 /// * `fasta` - A boolean indicating whether the output should be in FASTA format.
 fn process_single_end(
-    reads_to_save: Arc<FxHashSet<Vec<u8>>>,
+    reads_to_save: &FxHashSet<Vec<u8>>,
     input: Vec<String>,
     output: Vec<String>,
     compression_type: Option<niffler::Format>,
     compression_level: niffler::Level,
     fasta: bool,
 ) -> Result<()> {
-    let (tx, rx) = channel::unbounded::<fastq::Record>();
-    let reader_thread = thread::spawn({
-        trace!("Spawning reader thread");
-        move || -> Result<()> { parse_fastq(&input[0], reads_to_save, &tx) }
-    });
+    thread::scope(|scope| -> Result<()> {
+        let (tx, rx) = channel::unbounded::<fastq::Record>();
 
-    let writer_thread = thread::spawn({
-        trace!("Spawning writer thread");
-        move || -> Result<()> {
+        let reader = scope.spawn(|_| {
+            let result = parse_fastq(&input[0], reads_to_save, &tx);
+            drop(tx);
+            result.with_context(|| format!("Failed to parse input file: {}", input[0]))
+        });
+
+        let writer = scope.spawn(|_| {
             if !fasta {
                 write_output_fastq(rx, &output[0], compression_type, compression_level)
+                    .with_context(|| format!("Failed to write output file: {}", output[0]))
             } else {
                 write_output_fasta(rx, &output[0])
+                    .with_context(|| format!("Failed to write output file: {}", output[0]))
             }
-        }
-    });
+        });
 
-    let reader_result = reader_thread
-        .join()
-        .map_err(|e| anyhow!("Reader thread panicked: {:?}", e))?;
-    reader_result.context("Reader thread operation failed")?;
-
-    info!("Processing complete. Writing is in progress...");
-
-    let writer_result = writer_thread
-        .join()
-        .map_err(|e| anyhow!("Writer thread panicked: {:?}", e))?;
-    writer_result.context("Writer thread operation failed")?;
-
-    info!("Writing complete.");
-    Ok(())
+        reader
+            .join()
+            .map_err(|_| anyhow!("Reader thread panicked"))??;
+        writer
+            .join()
+            .map_err(|_| anyhow!("Writer thread panicked"))??;
+        Ok(())
+    })
+    .map_err(|_| anyhow!("Thread communication error"))?
 }
 
 /// Process paired-end reads from FASTQ files.
@@ -144,76 +141,70 @@ fn process_single_end(
 /// * `compression_level` - The compression level to use for the output files.
 /// * `fasta` - A boolean indicating whether to output in FASTA format.
 fn process_paired_end(
-    reads_to_save: Arc<FxHashSet<Vec<u8>>>,
+    reads_to_save: &FxHashSet<Vec<u8>>,
     input: Vec<String>,
     output: Vec<String>,
     compression_type: Option<niffler::Format>,
     compression_level: niffler::Level,
     fasta: bool,
 ) -> Result<()> {
-    let (tx1, rx1) = channel::unbounded::<fastq::Record>();
-    let (tx2, rx2) = channel::unbounded::<fastq::Record>();
-    let input_file1 = input[0].clone();
-    let input_file2 = input[1].clone();
-    let output_file1 = output[0].clone();
-    let output_file2 = output[1].clone();
+    thread::scope(|scope| -> Result<()> {
+        let (tx1, rx1) = channel::unbounded::<fastq::Record>();
+        let (tx2, rx2) = channel::unbounded::<fastq::Record>();
 
-    let reader_thread1 = thread::spawn({
-        trace!("Spawning reader thread 1");
-        let reads_to_save_arc = reads_to_save.clone();
-        move || -> Result<()> { parse_fastq(&input_file1, reads_to_save_arc, &tx1) }
-    });
+        let reader1 = scope.spawn(|_| {
+            let result = parse_fastq(&input[0], reads_to_save, &tx1);
+            drop(tx1);
+            result.with_context(|| format!("Failed to parse first input file: {}", input[0]))
+        });
 
-    let reader_thread2 = thread::spawn({
-        trace!("Spawning reader thread 2");
-        let reads_to_save_arc = reads_to_save.clone();
-        move || -> Result<()> { parse_fastq(&input_file2, reads_to_save_arc, &tx2) }
-    });
+        let reader2 = scope.spawn(|_| {
+            let result = parse_fastq(&input[1], reads_to_save, &tx2);
+            drop(tx2);
+            result.with_context(|| format!("Failed to parse second input file: {}", input[1]))
+        });
 
-    let writer_thread1 = thread::spawn({
-        trace!("Spawning writer thread 1");
-        move || -> Result<()> {
+        let writer1 = scope.spawn(|_| {
             if !fasta {
-                write_output_fastq(rx1, &output_file1, compression_type, compression_level)
+                write_output_fastq(rx1, &output[0], compression_type, compression_level)
+                    .with_context(|| {
+                        format!("Failed to write FASTQ output to first file: {}", output[0])
+                    })
             } else {
-                write_output_fasta(rx1, &output_file1)
+                write_output_fasta(rx1, &output[0]).with_context(|| {
+                    format!("Failed to write FASTA output to first file: {}", output[0])
+                })
             }
-        }
-    });
+        });
 
-    let writer_thread2 = thread::spawn({
-        trace!("Spawning writer thread 2");
-        move || -> Result<()> {
+        let writer2 = scope.spawn(|_| {
             if !fasta {
-                write_output_fastq(rx2, &output_file2, compression_type, compression_level)
+                write_output_fastq(rx2, &output[1], compression_type, compression_level)
+                    .with_context(|| {
+                        format!("Failed to write FASTQ output to second file: {}", output[1])
+                    })
             } else {
-                write_output_fasta(rx2, &output_file2)
+                write_output_fasta(rx2, &output[1]).with_context(|| {
+                    format!("Failed to write FASTA output to second file: {}", output[1])
+                })
             }
-        }
-    });
+        });
 
-    let reader_result1 = reader_thread1
-        .join()
-        .map_err(|e| anyhow!("Reader thread 1 panicked: {:?}", e))?;
-    reader_result1.context("Reader thread 1 operation failed")?;
-
-    let reader_result2 = reader_thread2
-        .join()
-        .map_err(|e| anyhow!("Reader thread 2 panicked: {:?}", e))?;
-    reader_result2.context("Reader thread 2 operation failed")?;
-
-    info!("Processing is done. Writing is in progress...");
-
-    let writer_result1 = writer_thread1
-        .join()
-        .map_err(|e| anyhow!("Writer thread 1 panicked: {:?}", e))?;
-    writer_result1.context("Writer thread 1 operation failed")?;
-
-    let writer_result2 = writer_thread2
-        .join()
-        .map_err(|e| anyhow!("Writer thread 2 panicked: {:?}", e))?;
-    writer_result2.context("Writer thread 2 operation failed")?;
-    Ok(())
+        reader1
+            .join()
+            .map_err(|_| anyhow!("Reader thread for file1 panicked"))??;
+        reader2
+            .join()
+            .map_err(|_| anyhow!("Reader thread for file2 panicked"))??;
+        writer1
+            .join()
+            .map_err(|_| anyhow!("Writer thread for file1 panicked"))??;
+        writer2
+            .join()
+            .map_err(|_| anyhow!("Writer thread for file2 panicked"))??;
+        Ok(())
+    })
+    .map_err(|_| anyhow!("Thread communication error",))?
 }
 
 /// Initializes and configures the logger.
@@ -273,7 +264,7 @@ fn main() -> Result<()> {
     if paired {
         info!("Detected two input files. Assuming paired-end reads");
         process_paired_end(
-            reads_to_save.clone(),
+            &reads_to_save,
             args.input,
             args.output,
             args.output_type,
@@ -283,7 +274,7 @@ fn main() -> Result<()> {
     } else {
         info!("Detected one input file. Assuming single-end reads");
         process_single_end(
-            reads_to_save.clone(),
+            &reads_to_save,
             args.input,
             args.output,
             args.output_type,

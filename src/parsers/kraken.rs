@@ -4,7 +4,6 @@ use log::{debug, info};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
-use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct Tree {
@@ -109,7 +108,7 @@ pub fn process_kraken_output(
     kraken_path: &str,
     exclude: bool,
     taxon_ids_to_save: &[i32],
-) -> Result<Arc<FxHashSet<Vec<u8>>>> {
+) -> Result<FxHashSet<Vec<u8>>> {
     info!("Processing kraken output...");
     let taxon_ids_to_save: HashSet<i32> = taxon_ids_to_save.iter().cloned().collect();
     let mut reads_to_save = FxHashSet::default();
@@ -144,7 +143,7 @@ pub fn process_kraken_output(
     // *total_read_count = total_reads; // Update this with the actual total_reads value
     // *reads_to_extract = reads_to_save.len();
 
-    Ok(Arc::new(reads_to_save))
+    Ok(reads_to_save)
 }
 
 /// Parses a Kraken report line to extract taxon ID and its corresponding level.

@@ -7,7 +7,6 @@ use noodles::fasta::record::{Definition, Sequence};
 use noodles::{fasta, fastq};
 use std::io::BufReader;
 use std::path::Path;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fs, io};
 
@@ -24,7 +23,7 @@ use std::{fs, io};
 /// * `tx` - A Sender channel to send the parsed reads to the writer thread.
 pub fn parse_fastq(
     file_path: &str,
-    reads_to_save: Arc<FxHashSet<Vec<u8>>>,
+    reads_to_save: &FxHashSet<Vec<u8>>,
     tx: &Sender<fastq::Record>,
 ) -> Result<()> {
     let mut num_reads = 0;
