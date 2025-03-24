@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use clap::Parser;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -9,10 +10,10 @@ use clap::Parser;
 pub struct Cli {
     // Fastq file(s)
     #[arg(short = 'i', long = "input", num_args(0..=2), required = true, value_parser(check_input_exists))]
-    pub input: Vec<String>,
+    pub input: Vec<PathBuf>,
     // Output file(s)
     #[arg(short = 'o', long = "output", num_args(0..=2), required = true)]
-    pub output: Vec<String>,
+    pub output: Vec<PathBuf>,
     // Kraken2 output file
     #[arg(
         short = 'k',
@@ -20,10 +21,10 @@ pub struct Cli {
         required = true,
         value_parser(check_input_exists)
     )]
-    pub kraken: String,
+    pub kraken: PathBuf,
     // Kraken2 report file
     #[arg(short = 'r', long = "report", value_parser(check_input_exists), required_if_eq_any([("parents", "true"), ("children", "true")]))]
-    pub report: Option<String>,
+    pub report: Option<PathBuf>,
     // Taxid to extract reads for
     #[arg(short = 't', long = "taxid", required = true)]
     pub taxid: i32,

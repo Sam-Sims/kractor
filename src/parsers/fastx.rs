@@ -6,7 +6,7 @@ use log::{debug, trace};
 use noodles::fasta::record::{Definition, Sequence};
 use noodles::{fasta, fastq};
 use std::io::BufReader;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use std::{fs, io};
 
@@ -22,7 +22,7 @@ use std::{fs, io};
 /// * `reads_to_save` - A HashMap containing read IDs and their associated taxon IDs.
 /// * `tx` - A Sender channel to send the parsed reads to the writer thread.
 pub fn parse_fastq(
-    file_path: &str,
+    file_path: &PathBuf,
     reads_to_save: &FxHashSet<Vec<u8>>,
     tx: &Sender<fastq::Record>,
 ) -> Result<()> {
@@ -32,7 +32,7 @@ pub fn parse_fastq(
     const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_millis(1500);
 
     let (reader, format) = niffler::from_path(file_path)
-        .with_context(|| format!("Failed to open fastq file: {}", file_path))?;
+        .with_context(|| format!("Failed to open fastq file: {:?}", file_path))?;
     debug!(
         "Detected input compression type for file {:?} as: {:?}",
         file_path, format
@@ -72,7 +72,7 @@ pub fn parse_fastq(
 /// # Returns
 ///
 /// Niffler compression format.
-fn infer_compression(file_path: &str) -> niffler::compression::Format {
+fn infer_compression(file_path: &PathBuf) -> niffler::compression::Format {
     let path = Path::new(&file_path);
     let ext = path.extension().unwrap().to_str().unwrap();
     match ext {
@@ -95,7 +95,7 @@ fn infer_compression(file_path: &str) -> niffler::compression::Format {
 /// * `compression_level`: The compression level to use for the output file.
 pub fn write_output_fastq(
     rx: Receiver<fastq::Record>,
-    out_file: &str,
+    out_file: &PathBuf,
     output_type: Option<niffler::Format>,
     compression_level: niffler::Level,
 ) -> Result<()> {
@@ -118,7 +118,7 @@ pub fn write_output_fastq(
     debug!("Creating output file: {:?}", out_file);
 
     let out_file = fs::File::create(out_file)
-        .with_context(|| format!("Failed to create output file: {}", out_file))?;
+        .with_context(|| format!("Failed to create output file: {:?}", out_file))?;
 
     let file_handle = Box::new(io::BufWriter::new(out_file));
     let writer = niffler::get_writer(file_handle, compression_type, compression_level)
@@ -135,11 +135,11 @@ pub fn write_output_fastq(
     Ok(())
 }
 
-pub fn write_output_fasta(rx: Receiver<fastq::Record>, out_file: &str) -> Result<()> {
+pub fn write_output_fasta(rx: Receiver<fastq::Record>, out_file: &PathBuf) -> Result<()> {
     debug!("Creating output file: {:?}", out_file);
 
     let out_file = fs::File::create(out_file)
-        .with_context(|| format!("Failed to create output file: {}", out_file))?;
+        .with_context(|| format!("Failed to create output file: {:?}", out_file))?;
 
     let mut writer = fasta::Writer::new(out_file);
 

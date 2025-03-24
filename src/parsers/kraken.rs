@@ -4,6 +4,7 @@ use log::{debug, info};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct Tree {
@@ -105,7 +106,7 @@ fn process_kraken_output_line(kraken_output: &str) -> Result<KrakenRecord> {
 ///
 /// A hashmap containing the read IDs to save as keys and the taxon IDs as values.
 pub fn process_kraken_output(
-    kraken_path: &str,
+    kraken_path: &PathBuf,
     exclude: bool,
     taxon_ids_to_save: &[i32],
 ) -> Result<FxHashSet<Vec<u8>>> {
@@ -113,7 +114,7 @@ pub fn process_kraken_output(
     let taxon_ids_to_save: HashSet<i32> = taxon_ids_to_save.iter().cloned().collect();
     let mut reads_to_save = FxHashSet::default();
     let kraken_file = fs::File::open(kraken_path)
-        .with_context(|| format!("Failed to open kraken output file: {}", kraken_path))?;
+        .with_context(|| format!("Failed to open kraken output file: {:?}", kraken_path))?;
     let reader = BufReader::new(kraken_file);
 
     for line_result in reader.lines() {
@@ -237,7 +238,7 @@ fn process_kraken_report_line(kraken_report: &str) -> Result<KrakenReportRecord>
 /// A tuple containing the tree and a hashmap mapping the saved taxon IDs to the tree.
 pub fn build_tree_from_kraken_report(
     taxon_to_save: i32,
-    report_path: &str,
+    report_path: &&PathBuf,
 ) -> Result<(Vec<Tree>, HashMap<i32, usize>)> {
     debug!("Building taxonomic tree from kraken report");
     // will store the tree
@@ -246,7 +247,7 @@ pub fn build_tree_from_kraken_report(
     let mut taxon_map = HashMap::new();
 
     let report_file = fs::File::open(report_path)
-        .with_context(|| format!("Failed to open kraken report file: {}", report_path))?;
+        .with_context(|| format!("Failed to open kraken report file: {:?}", report_path))?;
 
     let reader = BufReader::new(report_file);
     let mut prev_index = None;

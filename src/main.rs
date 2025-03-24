@@ -9,6 +9,8 @@ use fxhash::FxHashSet;
 use log::{debug, info, trace, LevelFilter};
 use noodles::fastq;
 use std::io::prelude::*;
+use std::path::PathBuf;
+
 pub mod parsers;
 
 mod cli;
@@ -32,7 +34,7 @@ use parsers::kraken::{
 ///
 /// A vector of taxon IDs that need to be saved.
 fn collect_taxons_to_save(
-    report: Option<String>,
+    report: &Option<PathBuf>,
     children: bool,
     parents: bool,
     taxid: i32,
@@ -90,8 +92,8 @@ fn collect_taxons_to_save(
 /// * `fasta` - A boolean indicating whether the output should be in FASTA format.
 fn process_single_end(
     reads_to_save: &FxHashSet<Vec<u8>>,
-    input: Vec<String>,
-    output: Vec<String>,
+    input: Vec<PathBuf>,
+    output: Vec<PathBuf>,
     compression_type: Option<niffler::Format>,
     compression_level: niffler::Level,
     fasta: bool,
@@ -102,16 +104,16 @@ fn process_single_end(
         let reader = scope.spawn(|_| {
             let result = parse_fastq(&input[0], reads_to_save, &tx);
             drop(tx);
-            result.with_context(|| format!("Failed to parse input file: {}", input[0]))
+            result.with_context(|| format!("Failed to parse input file: {:?}", input[0]))
         });
 
         let writer = scope.spawn(|_| {
             if !fasta {
                 write_output_fastq(rx, &output[0], compression_type, compression_level)
-                    .with_context(|| format!("Failed to write output file: {}", output[0]))
+                    .with_context(|| format!("Failed to write output file: {:?}", output[0]))
             } else {
                 write_output_fasta(rx, &output[0])
-                    .with_context(|| format!("Failed to write output file: {}", output[0]))
+                    .with_context(|| format!("Failed to write output file: {:?}", output[0]))
             }
         });
 
@@ -142,8 +144,8 @@ fn process_single_end(
 /// * `fasta` - A boolean indicating whether to output in FASTA format.
 fn process_paired_end(
     reads_to_save: &FxHashSet<Vec<u8>>,
-    input: Vec<String>,
-    output: Vec<String>,
+    input: Vec<PathBuf>,
+    output: Vec<PathBuf>,
     compression_type: Option<niffler::Format>,
     compression_level: niffler::Level,
     fasta: bool,
@@ -155,24 +157,30 @@ fn process_paired_end(
         let reader1 = scope.spawn(|_| {
             let result = parse_fastq(&input[0], reads_to_save, &tx1);
             drop(tx1);
-            result.with_context(|| format!("Failed to parse first input file: {}", input[0]))
+            result.with_context(|| format!("Failed to parse first input file: {:?}", input[0]))
         });
 
         let reader2 = scope.spawn(|_| {
             let result = parse_fastq(&input[1], reads_to_save, &tx2);
             drop(tx2);
-            result.with_context(|| format!("Failed to parse second input file: {}", input[1]))
+            result.with_context(|| format!("Failed to parse second input file: {:?}", input[1]))
         });
 
         let writer1 = scope.spawn(|_| {
             if !fasta {
                 write_output_fastq(rx1, &output[0], compression_type, compression_level)
                     .with_context(|| {
-                        format!("Failed to write FASTQ output to first file: {}", output[0])
+                        format!(
+                            "Failed to write FASTQ output to first file: {:?}",
+                            output[0]
+                        )
                     })
             } else {
                 write_output_fasta(rx1, &output[0]).with_context(|| {
-                    format!("Failed to write FASTA output to first file: {}", output[0])
+                    format!(
+                        "Failed to write FASTA output to first file: {:?}",
+                        output[0]
+                    )
                 })
             }
         });
@@ -181,11 +189,17 @@ fn process_paired_end(
             if !fasta {
                 write_output_fastq(rx2, &output[1], compression_type, compression_level)
                     .with_context(|| {
-                        format!("Failed to write FASTQ output to second file: {}", output[1])
+                        format!(
+                            "Failed to write FASTQ output to second file: {:?}",
+                            output[1]
+                        )
                     })
             } else {
                 write_output_fasta(rx2, &output[1]).with_context(|| {
-                    format!("Failed to write FASTA output to second file: {}", output[1])
+                    format!(
+                        "Failed to write FASTA output to second file: {:?}",
+                        output[1]
+                    )
                 })
             }
         });
@@ -256,7 +270,7 @@ fn main() -> Result<()> {
 
     //collect the taxon IDs to save and map those to read IDs
     let taxon_ids_to_save =
-        collect_taxons_to_save(args.report, args.children, args.parents, args.taxid)?;
+        collect_taxons_to_save(&args.report, args.children, args.parents, args.taxid)?;
     let reads_to_save = process_kraken_output(&args.kraken, args.exclude, &taxon_ids_to_save)?;
 
     //check if paired-end reads are provided
