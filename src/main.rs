@@ -97,21 +97,18 @@ fn process_single_end(
     fasta: bool,
 ) -> Result<()> {
     let (tx, rx) = channel::unbounded::<fastq::Record>();
-    let output_file = output[0].clone();
-
     let reader_thread = thread::spawn({
         trace!("Spawning reader thread");
-        let reads_to_save_arc = reads_to_save.clone();
-        move || -> Result<()> { parse_fastq(&input[0], reads_to_save_arc, &tx) }
+        move || -> Result<()> { parse_fastq(&input[0], reads_to_save, &tx) }
     });
 
     let writer_thread = thread::spawn({
         trace!("Spawning writer thread");
         move || -> Result<()> {
             if !fasta {
-                write_output_fastq(rx, &output_file, compression_type, compression_level)
+                write_output_fastq(rx, &output[0], compression_type, compression_level)
             } else {
-                write_output_fasta(rx, &output_file)
+                write_output_fasta(rx, &output[0])
             }
         }
     });
