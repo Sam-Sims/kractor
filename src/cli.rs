@@ -26,8 +26,8 @@ pub struct Cli {
     #[arg(short = 'r', long = "report", value_parser(check_input_exists), required_if_eq_any([("parents", "true"), ("children", "true")]))]
     pub report: Option<PathBuf>,
     // Taxid to extract reads for
-    #[arg(short = 't', long = "taxid", required = true)]
-    pub taxid: i32,
+    #[arg(short = 't', long = "taxid", required = true, num_args(1..))]
+    pub taxid: Vec<i32>,
     // Compression type
     #[arg(
         short = 'O',
