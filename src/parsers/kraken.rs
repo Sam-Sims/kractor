@@ -250,6 +250,7 @@ pub fn build_tree_from_kraken_report(
             let root_node = Tree::new(record.taxon_id, record.level, None);
             prev_index = Some(nodes.len());
             nodes.push(root_node);
+            continue;
         }
         // if the current level is not the same as the previous level + 1, then we are not at the correct parent, and need to move up the tree
         while let Some(parent_index) = prev_index {
