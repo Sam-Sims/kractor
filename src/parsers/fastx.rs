@@ -98,7 +98,8 @@ pub fn write_output_fastq(
     out_file: &PathBuf,
     output_type: Option<niffler::Format>,
     compression_level: niffler::Level,
-) -> Result<()> {
+) -> Result<usize> {
+    let mut read_output_count = 0;
     let compression_type = match output_type {
         Some(output_type) => {
             debug!("Output type overridden as: {:?}", output_type);
@@ -130,14 +131,15 @@ pub fn write_output_fastq(
         fastq_writer
             .write_record(&record)
             .with_context(|| format!("Error writing FASTQ record: {:?}", record))?;
+        read_output_count += 1;
     }
 
-    Ok(())
+    Ok(read_output_count)
 }
 
-pub fn write_output_fasta(rx: Receiver<fastq::Record>, out_file: &PathBuf) -> Result<()> {
+pub fn write_output_fasta(rx: Receiver<fastq::Record>, out_file: &PathBuf) -> Result<usize> {
     debug!("Creating output file: {:?}", out_file);
-
+    let mut total_read_count = 0;
     let out_file = fs::File::create(out_file)
         .with_context(|| format!("Failed to create output file: {:?}", out_file))?;
 
@@ -156,7 +158,8 @@ pub fn write_output_fasta(rx: Receiver<fastq::Record>, out_file: &PathBuf) -> Re
         writer
             .write_record(&fasta::Record::new(definition, sequence))
             .with_context(|| format!("Error writing FASTA record: {:?}", record))?;
+        total_read_count += 1;
     }
 
-    Ok(())
+    Ok(total_read_count)
 }

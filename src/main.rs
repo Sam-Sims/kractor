@@ -18,6 +18,27 @@ use parsers::fastx::{parse_fastq, write_output_fasta, write_output_fastq};
 use parsers::kraken::{
     build_tree_from_kraken_report, extract_children, extract_parents, process_kraken_output,
 };
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
+struct Summary {
+    taxon_count: usize,
+    taxon_ids: Vec<i32>,
+    reads_output: ReadCounts,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+enum ReadCounts {
+    Single {
+        total: usize,
+    },
+    Paired {
+        total: usize,
+        read1: usize,
+        read2: usize,
+    },
+}
 
 /// Collects taxon IDs to save.
 ///
@@ -112,8 +133,8 @@ fn process_single_end(
     compression_type: Option<niffler::Format>,
     compression_level: niffler::Level,
     fasta: bool,
-) -> Result<()> {
-    thread::scope(|scope| -> Result<()> {
+) -> Result<usize> {
+    thread::scope(|scope| -> Result<usize> {
         let (tx, rx) = channel::unbounded::<fastq::Record>();
 
         let reader = scope.spawn(|_| {
@@ -135,10 +156,10 @@ fn process_single_end(
         reader
             .join()
             .map_err(|_| anyhow!("Reader thread panicked"))??;
-        writer
+        let total_reads_output = writer
             .join()
             .map_err(|_| anyhow!("Writer thread panicked"))??;
-        Ok(())
+        Ok(total_reads_output)
     })
     .map_err(|_| anyhow!("Thread communication error"))?
 }
@@ -164,8 +185,8 @@ fn process_paired_end(
     compression_type: Option<niffler::Format>,
     compression_level: niffler::Level,
     fasta: bool,
-) -> Result<()> {
-    thread::scope(|scope| -> Result<()> {
+) -> Result<(usize, usize)> {
+    thread::scope(|scope| -> Result<(usize, usize)> {
         let (tx1, rx1) = channel::unbounded::<fastq::Record>();
         let (tx2, rx2) = channel::unbounded::<fastq::Record>();
 
@@ -225,13 +246,13 @@ fn process_paired_end(
         reader2
             .join()
             .map_err(|_| anyhow!("Reader thread for file2 panicked"))??;
-        writer1
+        let total_reads_output_pair1 = writer1
             .join()
             .map_err(|_| anyhow!("Writer thread for file1 panicked"))??;
-        writer2
+        let total_reads_output_pair2 = writer2
             .join()
             .map_err(|_| anyhow!("Writer thread for file2 panicked"))??;
-        Ok(())
+        Ok((total_reads_output_pair1, total_reads_output_pair2))
     })
     .map_err(|_| anyhow!("Thread communication error",))?
 }
@@ -290,9 +311,9 @@ fn main() -> Result<()> {
 
     //check if paired-end reads are provided
     let paired = args.input.len() == 2;
-    if paired {
+    let read_counts = if paired {
         info!("Detected two input files. Assuming paired-end reads");
-        process_paired_end(
+        let (total_reads_output_pair1, total_reads_output_pair2) = process_paired_end(
             &reads_to_save,
             args.input,
             args.output,
@@ -300,9 +321,15 @@ fn main() -> Result<()> {
             args.compression_level,
             args.output_fasta,
         )?;
+
+        ReadCounts::Paired {
+            total: total_reads_output_pair1 + total_reads_output_pair2,
+            read1: total_reads_output_pair1,
+            read2: total_reads_output_pair2,
+        }
     } else {
         info!("Detected one input file. Assuming single-end reads");
-        process_single_end(
+        let total_reads_output = process_single_end(
             &reads_to_save,
             args.input,
             args.output,
@@ -310,28 +337,23 @@ fn main() -> Result<()> {
             args.compression_level,
             args.output_fasta,
         )?;
-    }
+
+        ReadCounts::Single {
+            total: total_reads_output,
+        }
+    };
+
+    let summary = Summary {
+        taxon_count: taxon_ids_to_save.len(),
+        taxon_ids: taxon_ids_to_save,
+        reads_output: read_counts,
+    };
 
     info!("Complete!");
 
     if !args.no_json {
-        // let stats = serde_json::json!({
-        //     "taxon_id_count": *TAXON_ID_COUNT.lock()
-        //         .map_err(|e| anyhow!("Failed to lock TAXON_ID_COUNT mutex: {}", e))?,
-        //     "taxon_ids": *TAXON_IDS.lock()
-        //         .map_err(|e| anyhow!("Failed to lock TAXON_IDS mutex: {}", e))?,
-        //     "reads_in": *TOTAL_READS.lock()
-        //         .map_err(|e| anyhow!("Failed to lock TOTAL_READS mutex: {}", e))?,
-        //     "reads_out": *READS_TO_EXTRACT.lock()
-        //         .map_err(|e| anyhow!("Failed to lock READS_TO_EXTRACT mutex: {}", e))?,
-        //     "input_format": if paired { "paired-end" } else { "single-end" },
-        //     "output_format": if args.output_fasta { "fasta" } else { "fastq" },
-        // });
-
-        // let stats_json =
-        //     serde_json::to_string_pretty(&stats).context("Failed to serialize stats to JSON")?;
-        //
-        // println!("{}", stats_json);
+        let json = serde_json::to_string_pretty(&summary)?;
+        println!("{}", json);
     }
 
     Ok(())
