@@ -1,5 +1,6 @@
+use anyhow::{anyhow, Result};
 use clap::Parser;
-use anyhow::{Result, anyhow};
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -9,10 +10,10 @@ use anyhow::{Result, anyhow};
 pub struct Cli {
     // Fastq file(s)
     #[arg(short = 'i', long = "input", num_args(0..=2), required = true, value_parser(check_input_exists))]
-    pub input: Vec<String>,
+    pub input: Vec<PathBuf>,
     // Output file(s)
     #[arg(short = 'o', long = "output", num_args(0..=2), required = true)]
-    pub output: Vec<String>,
+    pub output: Vec<PathBuf>,
     // Kraken2 output file
     #[arg(
         short = 'k',
@@ -20,10 +21,10 @@ pub struct Cli {
         required = true,
         value_parser(check_input_exists)
     )]
-    pub kraken: String,
+    pub kraken: PathBuf,
     // Kraken2 report file
-    #[arg(short = 'r', long = "report", value_parser(check_input_exists))]
-    pub report: Option<String>,
+    #[arg(short = 'r', long = "report", value_parser(check_input_exists), required_if_eq_any([("parents", "true"), ("children", "true")]))]
+    pub report: Option<PathBuf>,
     // Taxid to extract reads for
     #[arg(short = 't', long = "taxid", required = true)]
     pub taxid: i32,
@@ -67,16 +68,24 @@ impl Cli {
         let in_count = self.input.len();
         let out_count = self.output.len();
         if in_count > 2 {
-            return Err(anyhow!("Too many input files specified. Only 1 or 2 are allowed."));
+            return Err(anyhow!(
+                "Too many input files specified. Only 1 or 2 are allowed."
+            ));
         }
         if out_count > 2 {
-            return Err(anyhow!("Too many output files specified. Only 1 or 2 are allowed."));
+            return Err(anyhow!(
+                "Too many output files specified. Only 1 or 2 are allowed."
+            ));
         }
         if in_count == 2 && out_count == 1 {
-            return Err(anyhow!("Two input files specified but only one output file specified."));
+            return Err(anyhow!(
+                "Two input files specified but only one output file specified."
+            ));
         }
         if in_count == 1 && out_count == 2 {
-            return Err(anyhow!("One input file specified but two output files specified."));
+            return Err(anyhow!(
+                "One input file specified but two output files specified."
+            ));
         }
         Ok(())
     }
