@@ -5,7 +5,8 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(
     version,
-    about = "Extract reads from a FASTQ file based on taxonomic classification via Kraken2."
+    about = "Extract reads from a FASTQ file based on taxonomic classification via Kraken2.",
+    author = "Sam Sims"
 )]
 pub struct Cli {
     // Fastq file(s)
@@ -56,34 +57,6 @@ pub struct Cli {
     // Verbose
     #[arg(short)]
     pub verbose: bool,
-}
-
-impl Cli {
-    pub fn validate_input(&self) -> Result<()> {
-        let in_count = self.input.len();
-        let out_count = self.output.len();
-        if in_count > 2 {
-            return Err(anyhow!(
-                "Too many input files specified. Only 1 or 2 are allowed."
-            ));
-        }
-        if out_count > 2 {
-            return Err(anyhow!(
-                "Too many output files specified. Only 1 or 2 are allowed."
-            ));
-        }
-        if in_count == 2 && out_count == 1 {
-            return Err(anyhow!(
-                "Two input files specified but only one output file specified."
-            ));
-        }
-        if in_count == 1 && out_count == 2 {
-            return Err(anyhow!(
-                "One input file specified but two output files specified."
-            ));
-        }
-        Ok(())
-    }
 }
 
 fn validate_compression(s: &str) -> Result<niffler::compression::Format, String> {
