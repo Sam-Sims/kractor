@@ -708,6 +708,14 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_parents_empty_tree() {
+        let nodes: Vec<Tree> = Vec::new();
+        let taxon_map = HashMap::new();
+        let result = extract_parents(&taxon_map, &nodes, 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_extract_children_valid() {
         let mut nodes = vec![
             Tree::new(1, 0, None),
