@@ -27,7 +27,7 @@ pub struct Cli {
     pub report: Option<PathBuf>,
     // Taxid to extract reads for
     #[arg(short = 't', long = "taxid", required = true)]
-    pub taxid: i32,
+    pub taxid: Vec<i32>,
     // Compression type
     #[arg(
         short = 'O',

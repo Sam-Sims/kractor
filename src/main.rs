@@ -37,7 +37,7 @@ fn collect_taxons_to_save(
     report: &Option<PathBuf>,
     children: bool,
     parents: bool,
-    taxid: i32,
+    taxids: Vec<i32>,
 ) -> Result<Vec<i32>> {
     let mut taxon_ids_to_save = Vec::new();
 
@@ -50,25 +50,40 @@ fn collect_taxons_to_save(
 
     if let Some(report_path) = report {
         info!("Processing kraken report...");
-        let (nodes, taxon_map) = build_tree_from_kraken_report(taxid, report_path)?;
+        let (nodes, taxon_map) = build_tree_from_kraken_report(&taxids, report_path)?;
         if children {
             debug!("Extracting children");
             let mut children = Vec::new();
-            extract_children(&nodes, taxon_map[&taxid], &mut children)?;
+            for taxid in &taxids {
+                if let Some(&node_index) = taxon_map.get(taxid) {
+                    extract_children(&nodes, node_index, &mut children)?;
+                } else {
+                    return Err(anyhow::anyhow!(
+                        "Taxon ID {} not found in taxonomy map",
+                        taxid
+                    ));
+                }
+            }
             taxon_ids_to_save.extend(&children);
         } else if parents {
             debug!("Extracting parents");
-            taxon_ids_to_save.extend(extract_parents(&taxon_map, &nodes, taxid)?);
+            for taxid in &taxids {
+                taxon_ids_to_save.extend(extract_parents(&taxon_map, &nodes, *taxid)?);
+            }
         } else {
-            taxon_ids_to_save.push(taxid);
+            taxon_ids_to_save.extend(&taxids);
         }
     } else {
         debug!(
-            "No kraken report provided - extracting reads for taxon ID {} only",
-            taxid
+            "No kraken report provided - extracting reads for taxon ID {:?} only",
+            taxids
         );
-        taxon_ids_to_save.push(taxid);
+        taxon_ids_to_save.extend(&taxids);
     }
+
+    taxon_ids_to_save.sort_unstable();
+    taxon_ids_to_save.dedup();
+
     debug!("Taxon IDs identified: {:?}", taxon_ids_to_save);
     if taxon_ids_to_save.is_empty() {
         bail!("No taxon IDs were identified for extraction");
