@@ -237,7 +237,7 @@ fn process_kraken_report_line(kraken_report: &str) -> Result<KrakenReportRecord>
 ///
 /// A tuple containing the tree and a hashmap mapping the saved taxon IDs to the tree.
 pub fn build_tree_from_kraken_report(
-    taxon_to_save: i32,
+    taxon_to_save: &[i32],
     report_path: &PathBuf,
 ) -> Result<(Vec<Tree>, HashMap<i32, usize>)> {
     debug!("Building taxonomic tree from kraken report");
@@ -286,13 +286,21 @@ pub fn build_tree_from_kraken_report(
         prev_index = Some(curr_index);
 
         // if the current taxon is one we want to save, add it to the map
-        if record.taxon_id == taxon_to_save {
+        if taxon_to_save.contains(&record.taxon_id) {
             taxon_map.insert(record.taxon_id, curr_index);
         }
     }
 
-    if !taxon_map.contains_key(&taxon_to_save) {
-        bail!("Taxon ID {} not found in the kraken report", taxon_to_save);
+    let missing_taxon_ids = taxon_to_save
+        .iter()
+        .filter(|txid| !taxon_map.contains_key(txid))
+        .collect::<Vec<&i32>>();
+
+    if !missing_taxon_ids.is_empty() {
+        bail!(
+            "Failed to find taxon IDs in kraken report: {:?}",
+            missing_taxon_ids
+        );
     }
 
     Ok((nodes, taxon_map))
