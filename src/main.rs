@@ -25,6 +25,7 @@ struct Summary {
     taxon_count: usize,
     taxon_ids: Vec<i32>,
     reads_output: ReadCounts,
+    input_format: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -311,6 +312,7 @@ fn main() -> Result<()> {
 
     //check if paired-end reads are provided
     let paired = args.input.len() == 2;
+    let input_format = if paired { "paired" } else { "single" };
     let read_counts = if paired {
         info!("Detected two input files. Assuming paired-end reads");
         let (total_reads_output_pair1, total_reads_output_pair2) = process_paired_end(
@@ -347,6 +349,7 @@ fn main() -> Result<()> {
         taxon_count: taxon_ids_to_save.len(),
         taxon_ids: taxon_ids_to_save,
         reads_output: read_counts,
+        input_format: input_format.to_string(),
     };
 
     info!("Complete!");
