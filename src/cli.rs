@@ -9,21 +9,16 @@ use std::path::PathBuf;
 )]
 pub struct Cli {
     // Fastq file(s)
-    #[arg(short = 'i', long = "input", num_args(0..=2), required = true, value_parser(check_input_exists))]
+    #[arg(short = 'i', long = "input", num_args(0..=2), required = true)]
     pub input: Vec<PathBuf>,
     // Output file(s)
     #[arg(short = 'o', long = "output", num_args(0..=2), required = true)]
     pub output: Vec<PathBuf>,
     // Kraken2 output file
-    #[arg(
-        short = 'k',
-        long = "kraken",
-        required = true,
-        value_parser(check_input_exists)
-    )]
+    #[arg(short = 'k', long = "kraken", required = true)]
     pub kraken: PathBuf,
     // Kraken2 report file
-    #[arg(short = 'r', long = "report", value_parser(check_input_exists), required_if_eq_any([("parents", "true"), ("children", "true")]))]
+    #[arg(short = 'r', long = "report", required_if_eq_any([("parents", "true"), ("children", "true")]))]
     pub report: Option<PathBuf>,
     // Taxid to extract reads for
     #[arg(short = 't', long = "taxid", required = true)]
@@ -97,14 +92,6 @@ fn validate_compression(s: &str) -> Result<niffler::compression::Format, String>
         "bz2" => Ok(niffler::compression::Format::Bzip),
         "none" => Ok(niffler::compression::Format::No),
         _ => Err(format!("Unknown compression type: {}", s)),
-    }
-}
-
-fn check_input_exists(s: &str) -> Result<String, String> {
-    if std::path::Path::new(s).exists() {
-        Ok(s.to_string())
-    } else {
-        Err(format!("File does not exist: {}", s))
     }
 }
 
