@@ -1,6 +1,7 @@
-use anyhow::Result;
 use chrono::Local;
 use clap::Parser;
+use color_eyre::eyre::bail;
+use color_eyre::Result;
 use env_logger::fmt::Color;
 use env_logger::Builder;
 use log::LevelFilter;
@@ -56,10 +57,10 @@ fn main() -> Result<()> {
     let args = Cli::parse();
     init_logging(args.verbose);
 
+    color_eyre::install()?;
+
     if args.input.len() != args.output.len() {
-        return Err(anyhow::anyhow!(
-            "Number of input and output files must match"
-        ));
+        bail!("Number of input and output files must match");
     }
 
     let mut app = Kractor::new(args);

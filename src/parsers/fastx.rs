@@ -1,5 +1,4 @@
-use anyhow::Context;
-use anyhow::Result;
+use color_eyre::eyre::{Context, Result};
 use crossbeam::channel::{Receiver, Sender};
 use fxhash::FxHashSet;
 use log::{debug, trace};
@@ -32,7 +31,7 @@ pub fn parse_fastq(
     const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_millis(1500);
 
     let (reader, format) = niffler::from_path(file_path)
-        .with_context(|| format!("Failed to open fastq file: {:?}", file_path))?;
+        .wrap_err_with(|| format!("Failed to open fastq file: {:?}", file_path))?;
     debug!(
         "Detected input compression type for file {:?} as: {:?}",
         file_path, format
@@ -42,11 +41,11 @@ pub fn parse_fastq(
 
     for (record_idx, result) in fastq_reader.records().enumerate() {
         let record = result
-            .with_context(|| format!("Error reading FASTQ record at position {}", record_idx))?;
+            .wrap_err_with(|| format!("Error reading FASTQ record at position {}", record_idx))?;
 
         let read_id = record.name();
         if reads_to_save.contains(&read_id.to_vec()) {
-            tx.send(record).context("Error sending record")?;
+            tx.send(record).wrap_err("Error sending record")?;
         }
         num_reads += 1;
 
@@ -119,18 +118,18 @@ pub fn write_output_fastq(
     debug!("Creating output file: {:?}", out_file);
 
     let out_file = fs::File::create(out_file)
-        .with_context(|| format!("Failed to create output file: {:?}", out_file))?;
+        .wrap_err_with(|| format!("Failed to create output file: {:?}", out_file))?;
 
     let file_handle = Box::new(io::BufWriter::new(out_file));
     let writer = niffler::get_writer(file_handle, compression_type, compression_level)
-        .context("Failed to create niffler writer")?;
+        .wrap_err("Failed to create niffler writer")?;
 
     let mut fastq_writer = fastq::Writer::new(writer);
 
     for record in rx {
         fastq_writer
             .write_record(&record)
-            .with_context(|| format!("Error writing FASTQ record: {:?}", record))?;
+            .wrap_err_with(|| format!("Error writing FASTQ record: {:?}", record))?;
         read_output_count += 1;
     }
 
@@ -141,13 +140,13 @@ pub fn write_output_fasta(rx: Receiver<fastq::Record>, out_file: &PathBuf) -> Re
     debug!("Creating output file: {:?}", out_file);
     let mut total_read_count = 0;
     let out_file = fs::File::create(out_file)
-        .with_context(|| format!("Failed to create output file: {:?}", out_file))?;
+        .wrap_err_with(|| format!("Failed to create output file: {:?}", out_file))?;
 
     let mut writer = fasta::Writer::new(out_file);
 
     for record in rx {
         let definition = Definition::new(
-            std::str::from_utf8(record.name()).with_context(|| {
+            std::str::from_utf8(record.name()).wrap_err_with(|| {
                 format!("Invalid UTF-8 sequence in read name: {:?}", record.name())
             })?,
             None,
@@ -157,7 +156,7 @@ pub fn write_output_fasta(rx: Receiver<fastq::Record>, out_file: &PathBuf) -> Re
 
         writer
             .write_record(&fasta::Record::new(definition, sequence))
-            .with_context(|| format!("Error writing FASTA record: {:?}", record))?;
+            .wrap_err_with(|| format!("Error writing FASTA record: {:?}", record))?;
         total_read_count += 1;
     }
 

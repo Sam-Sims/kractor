@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Context, Result};
+use color_eyre::{eyre::bail, eyre::eyre, eyre::Context, Result};
 use fxhash::FxHashSet;
 use log::{debug, info};
 use std::collections::{HashMap, HashSet};
@@ -61,24 +61,26 @@ fn process_kraken_output_line(kraken_output: &str) -> Result<KrakenRecord> {
 
     let classification = fields
         .next()
-        .ok_or_else(|| anyhow!("Missing classification field"))?;
+        .ok_or_else(|| eyre!("Missing classification field in the kraken output file"))?;
     let read_id = fields
         .next()
-        .ok_or_else(|| anyhow!("Missing read ID field"))?;
+        .ok_or_else(|| eyre!("Missing read ID field in the kraken output file"))?;
     let taxon_id = fields
         .next()
-        .ok_or_else(|| anyhow!("Missing taxon ID field"))?;
+        .ok_or_else(|| eyre!("Missing taxon ID field"))?;
     let length = fields
         .next()
-        .ok_or_else(|| anyhow!("Missing length field"))?;
-    let lca_map = fields.next().ok_or_else(|| anyhow!("Missing LCA map"))?;
+        .ok_or_else(|| eyre!("Missing length field in the kraken output file"))?;
+    let lca_map = fields
+        .next()
+        .ok_or_else(|| eyre!("Missing LCA map in the kraken output file"))?;
 
     if fields.next().is_none() {
         let is_classified = classification == "C";
         let taxon_id = taxon_id
             .trim()
             .parse::<i32>()
-            .with_context(|| format!("Error parsing taxon ID: '{}'", taxon_id))?;
+            .wrap_err_with(|| format!("Error parsing taxon ID: '{}'", taxon_id))?;
         Ok(KrakenRecord {
             is_classified,
             read_id: read_id.as_bytes().to_vec(),
@@ -114,11 +116,11 @@ pub fn process_kraken_output(
     let taxon_ids_to_save: HashSet<i32> = taxon_ids_to_save.iter().cloned().collect();
     let mut reads_to_save = FxHashSet::default();
     let kraken_file = fs::File::open(kraken_path)
-        .with_context(|| format!("Failed to open kraken output file: {:?}", kraken_path))?;
+        .wrap_err_with(|| format!("Failed to open kraken output file: {:?}", kraken_path))?;
     let reader = BufReader::new(kraken_file);
 
     for line_result in reader.lines() {
-        let line = line_result.context("Error reading kraken output line")?;
+        let line = line_result.wrap_err("Error reading kraken output line")?;
         let record = process_kraken_output_line(&line)?;
         if (exclude && !taxon_ids_to_save.contains(&record.taxon_id))
             || (!exclude && taxon_ids_to_save.contains(&record.taxon_id))
@@ -126,24 +128,6 @@ pub fn process_kraken_output(
             reads_to_save.insert(record.read_id);
         }
     }
-    // let mut taxon_id_count = TAXON_ID_COUNT
-    //     .lock()
-    //     .map_err(|e| anyhow!("Failed to lock TAXON_ID_COUNT mutex: {}", e))?;
-    // let mut taxon_ids = TAXON_IDS
-    //     .lock()
-    //     .map_err(|e| anyhow!("Failed to lock TAXON_IDS mutex: {}", e))?;
-    // let mut total_read_count = TOTAL_READS
-    //     .lock()
-    //     .map_err(|e| anyhow!("Failed to lock TOTAL_READS mutex: {}", e))?;
-    // let mut reads_to_extract = READS_TO_EXTRACT
-    //     .lock()
-    //     .map_err(|e| anyhow!("Failed to lock READS_TO_EXTRACT mutex: {}", e))?;
-    //
-    // *taxon_id_count = taxon_ids_to_save.len();
-    // *taxon_ids = taxon_ids_to_save;
-    // *total_read_count = total_reads; // Update this with the actual total_reads value
-    // *reads_to_extract = reads_to_save.len();
-
     Ok(reads_to_save)
 }
 
@@ -165,30 +149,32 @@ fn process_kraken_report_line(kraken_report: &str) -> Result<KrakenReportRecord>
 
     let percent_field = fields
         .next()
-        .ok_or_else(|| anyhow!("Missing percent field"))?;
+        .ok_or_else(|| eyre!("Missing percent field in the kraken report file"))?;
     let fragments_clade_rooted_field = fields
         .next()
-        .ok_or_else(|| anyhow!("Missing fragments clade rooted field"))?;
+        .ok_or_else(|| eyre!("Missing fragments clade rooted field in the kraken report file"))?;
     let fragments_taxon_field = fields
         .next()
-        .ok_or_else(|| anyhow!("Missing fragments taxon field"))?;
-    let rank_field = fields.next().ok_or_else(|| anyhow!("Missing rank field"))?;
+        .ok_or_else(|| eyre!("Missing fragments taxon field in the kraken report file"))?;
+    let rank_field = fields
+        .next()
+        .ok_or_else(|| eyre!("Missing rank field in the kraken report file"))?;
     let taxon_id_field = fields
         .next()
-        .ok_or_else(|| anyhow!("Missing taxon ID field"))?;
+        .ok_or_else(|| eyre!("Missing taxon ID field in the kraken report file"))?;
     let name_field = fields
         .next()
-        .ok_or_else(|| anyhow!("Missing taxon name field"))?;
+        .ok_or_else(|| eyre!("Missing taxon name field in the kraken report file"))?;
     if fields.next().is_none() {
         let percent = percent_field
             .trim()
             .parse::<f32>()
-            .with_context(|| format!("Error parsing percent value: '{}'", percent_field))?;
+            .wrap_err_with(|| format!("Error parsing percent value: '{}'", percent_field))?;
 
         let fragments_clade_rooted = fragments_clade_rooted_field
             .trim()
             .parse::<i32>()
-            .with_context(|| {
+            .wrap_err_with(|| {
                 format!(
                     "Error parsing fragments clade rooted: '{}'",
                     fragments_clade_rooted_field
@@ -198,14 +184,14 @@ fn process_kraken_report_line(kraken_report: &str) -> Result<KrakenReportRecord>
         let fragments_taxon = fragments_taxon_field
             .trim()
             .parse::<i32>()
-            .with_context(|| {
+            .wrap_err_with(|| {
                 format!("Error parsing fragments taxon: '{}'", fragments_taxon_field)
             })?;
 
         let taxon_id = taxon_id_field
             .trim()
             .parse::<i32>()
-            .with_context(|| format!("Error parsing taxon ID: '{}'", taxon_id_field))?;
+            .wrap_err_with(|| format!("Error parsing taxon ID: '{}'", taxon_id_field))?;
 
         let level = name_field.chars().take_while(|&c| c == ' ').count() / 2;
 
@@ -247,13 +233,13 @@ pub fn build_tree_from_kraken_report(
     let mut taxon_map = HashMap::new();
 
     let report_file = fs::File::open(report_path)
-        .with_context(|| format!("Failed to open kraken report file: {:?}", report_path))?;
+        .wrap_err_with(|| format!("Failed to open kraken report file: {:?}", report_path))?;
 
     let reader = BufReader::new(report_file);
     let mut prev_index = None;
 
     for line in reader.lines() {
-        let line = line.context("Error reading kraken report line")?;
+        let line = line.wrap_err("Error reading kraken report line")?;
         let record = process_kraken_report_line(&line)?;
         // if taxon_id == 0, it's an unclassified read so we can skip
         if record.taxon_id == 0 {
@@ -327,7 +313,7 @@ pub fn extract_parents(
     // Backtracking traversal from the given taxon_id to the root
     let start_index = taxon_map
         .get(&taxon_id)
-        .ok_or_else(|| anyhow!("Taxon ID {} not found in taxonomy map", taxon_id))?;
+        .ok_or_else(|| eyre!("Taxon ID {} not found in taxonomy map", taxon_id))?;
 
     let mut parents = Vec::new();
     parents.push(taxon_id);

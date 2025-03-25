@@ -1,5 +1,6 @@
 use crate::extract::{process_paired_end, process_single_end};
 use crate::{extract, parsers, Cli};
+use color_eyre::Result;
 use fxhash::FxHashSet;
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
@@ -41,7 +42,7 @@ impl Kractor {
         }
     }
 
-    pub fn run(&mut self) -> anyhow::Result<()> {
+    pub fn run(&mut self) -> Result<()> {
         self.collect_taxons()?;
         self.process_kraken_output()?;
         self.process_reads()?;
@@ -52,7 +53,7 @@ impl Kractor {
         Ok(())
     }
 
-    fn collect_taxons(&mut self) -> anyhow::Result<()> {
+    fn collect_taxons(&mut self) -> Result<()> {
         self.taxon_ids = extract::collect_taxons_to_save(
             &self.args.report,
             self.args.children,
@@ -63,7 +64,7 @@ impl Kractor {
         Ok(())
     }
 
-    fn process_kraken_output(&mut self) -> anyhow::Result<()> {
+    fn process_kraken_output(&mut self) -> Result<()> {
         self.reads_to_save = parsers::kraken::process_kraken_output(
             &self.args.kraken,
             self.args.exclude,
@@ -74,7 +75,7 @@ impl Kractor {
         Ok(())
     }
 
-    fn process_reads(&mut self) -> anyhow::Result<()> {
+    fn process_reads(&mut self) -> Result<()> {
         let paired = self.args.input.len() == 2;
         let input_format = if paired { "paired" } else { "single" };
 
@@ -118,7 +119,7 @@ impl Kractor {
         Ok(())
     }
 
-    fn output_summary(&self) -> anyhow::Result<()> {
+    fn output_summary(&self) -> Result<()> {
         if let Some(summary) = &self.summary {
             if !self.args.no_json {
                 let json = serde_json::to_string_pretty(summary)?;

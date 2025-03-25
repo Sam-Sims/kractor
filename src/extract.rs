@@ -1,6 +1,6 @@
 use crate::parsers::fastx::{parse_fastq, write_output_fasta, write_output_fastq};
 use crate::parsers::kraken::{build_tree_from_kraken_report, extract_children, extract_parents};
-use anyhow::{anyhow, bail, Context, Result};
+use color_eyre::{eyre::bail, eyre::eyre, eyre::WrapErr, Result};
 use crossbeam::{channel, thread};
 use fxhash::FxHashSet;
 use log::{debug, info};
@@ -35,28 +35,28 @@ pub fn process_single_end(
         let reader = scope.spawn(|_| {
             let result = parse_fastq(&input[0], reads_to_save, &tx);
             drop(tx);
-            result.with_context(|| format!("Failed to parse input file: {:?}", input[0]))
+            result.wrap_err_with(|| format!("Failed to parse input file: {:?}", input[0]))
         });
 
         let writer = scope.spawn(|_| {
             if !fasta {
                 write_output_fastq(rx, &output[0], compression_type, compression_level)
-                    .with_context(|| format!("Failed to write output file: {:?}", output[0]))
+                    .wrap_err_with(|| format!("Failed to write output file: {:?}", output[0]))
             } else {
                 write_output_fasta(rx, &output[0])
-                    .with_context(|| format!("Failed to write output file: {:?}", output[0]))
+                    .wrap_err_with(|| format!("Failed to write output file: {:?}", output[0]))
             }
         });
 
         reader
             .join()
-            .map_err(|_| anyhow!("Reader thread panicked"))??;
+            .map_err(|_| eyre!("Reader thread panicked"))??;
         let total_reads_output = writer
             .join()
-            .map_err(|_| anyhow!("Writer thread panicked"))??;
+            .map_err(|_| eyre!("Writer thread panicked"))??;
         Ok(total_reads_output)
     })
-    .map_err(|_| anyhow!("Thread communication error"))?
+    .map_err(|_| eyre!("Thread communication error"))?
 }
 
 /// Process paired-end reads from FASTQ files.
@@ -88,26 +88,26 @@ pub fn process_paired_end(
         let reader1 = scope.spawn(|_| {
             let result = parse_fastq(&input[0], reads_to_save, &tx1);
             drop(tx1);
-            result.with_context(|| format!("Failed to parse first input file: {:?}", input[0]))
+            result.wrap_err_with(|| format!("Failed to parse first input file: {:?}", input[0]))
         });
 
         let reader2 = scope.spawn(|_| {
             let result = parse_fastq(&input[1], reads_to_save, &tx2);
             drop(tx2);
-            result.with_context(|| format!("Failed to parse second input file: {:?}", input[1]))
+            result.wrap_err_with(|| format!("Failed to parse second input file: {:?}", input[1]))
         });
 
         let writer1 = scope.spawn(|_| {
             if !fasta {
                 write_output_fastq(rx1, &output[0], compression_type, compression_level)
-                    .with_context(|| {
+                    .wrap_err_with(|| {
                         format!(
                             "Failed to write FASTQ output to first file: {:?}",
                             output[0]
                         )
                     })
             } else {
-                write_output_fasta(rx1, &output[0]).with_context(|| {
+                write_output_fasta(rx1, &output[0]).wrap_err_with(|| {
                     format!(
                         "Failed to write FASTA output to first file: {:?}",
                         output[0]
@@ -119,14 +119,14 @@ pub fn process_paired_end(
         let writer2 = scope.spawn(|_| {
             if !fasta {
                 write_output_fastq(rx2, &output[1], compression_type, compression_level)
-                    .with_context(|| {
+                    .wrap_err_with(|| {
                         format!(
                             "Failed to write FASTQ output to second file: {:?}",
                             output[1]
                         )
                     })
             } else {
-                write_output_fasta(rx2, &output[1]).with_context(|| {
+                write_output_fasta(rx2, &output[1]).wrap_err_with(|| {
                     format!(
                         "Failed to write FASTA output to second file: {:?}",
                         output[1]
@@ -137,19 +137,19 @@ pub fn process_paired_end(
 
         reader1
             .join()
-            .map_err(|_| anyhow!("Reader thread for file1 panicked"))??;
+            .map_err(|_| eyre!("Reader thread for file1 panicked"))??;
         reader2
             .join()
-            .map_err(|_| anyhow!("Reader thread for file2 panicked"))??;
+            .map_err(|_| eyre!("Reader thread for file2 panicked"))??;
         let total_reads_output_pair1 = writer1
             .join()
-            .map_err(|_| anyhow!("Writer thread for file1 panicked"))??;
+            .map_err(|_| eyre!("Writer thread for file1 panicked"))??;
         let total_reads_output_pair2 = writer2
             .join()
-            .map_err(|_| anyhow!("Writer thread for file2 panicked"))??;
+            .map_err(|_| eyre!("Writer thread for file2 panicked"))??;
         Ok((total_reads_output_pair1, total_reads_output_pair2))
     })
-    .map_err(|_| anyhow!("Thread communication error",))?
+    .map_err(|_| eyre!("Thread communication error"))?
 }
 
 /// Collects taxon IDs to save.
@@ -176,32 +176,35 @@ pub fn collect_taxons_to_save(
 
     // I dont think we will reach this code ever since clap should catch this - but in case it doesnt
     if (parents || children) && report.is_none() {
-        return Err(anyhow::anyhow!(
-            "Report required when parents or children is enabled"
-        ));
+        return Err(eyre!("Report required when parents or children is enabled"));
     }
 
     if let Some(report_path) = report {
         info!("Processing kraken report...");
-        let (nodes, taxon_map) = build_tree_from_kraken_report(&taxids, report_path)?;
+        let (nodes, taxon_map) = build_tree_from_kraken_report(&taxids, report_path)
+            .wrap_err("Failed to build tree from Kraken report")?;
+
         if children {
             debug!("Extracting children");
             let mut children = Vec::new();
             for taxid in &taxids {
                 if let Some(&node_index) = taxon_map.get(taxid) {
-                    extract_children(&nodes, node_index, &mut children)?;
+                    extract_children(&nodes, node_index, &mut children).wrap_err_with(|| {
+                        format!("Failed to extract children for taxon ID {}", taxid)
+                    })?;
                 } else {
-                    return Err(anyhow::anyhow!(
-                        "Taxon ID {} not found in taxonomy map",
-                        taxid
-                    ));
+                    return Err(eyre!("Taxon ID {} not found in taxonomy map", taxid));
                 }
             }
             taxon_ids_to_save.extend(&children);
         } else if parents {
             debug!("Extracting parents");
             for taxid in &taxids {
-                taxon_ids_to_save.extend(extract_parents(&taxon_map, &nodes, *taxid)?);
+                taxon_ids_to_save.extend(
+                    extract_parents(&taxon_map, &nodes, *taxid).wrap_err_with(|| {
+                        format!("Failed to extract parents for taxon ID {}", taxid)
+                    })?,
+                );
             }
         } else {
             taxon_ids_to_save.extend(&taxids);
