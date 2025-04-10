@@ -42,17 +42,6 @@ impl Kractor {
         }
     }
 
-    pub fn run(&mut self) -> Result<()> {
-        self.collect_taxons()?;
-        self.process_kraken_output()?;
-        self.process_reads()?;
-
-        self.output_summary()?;
-
-        info!("Complete!");
-        Ok(())
-    }
-
     fn collect_taxons(&mut self) -> Result<()> {
         self.taxon_ids = extract::collect_taxons_to_save(
             &self.args.report,
@@ -126,6 +115,17 @@ impl Kractor {
                 println!("{}", json);
             }
         }
+        Ok(())
+    }
+
+    pub fn run(&mut self) -> Result<()> {
+        self.collect_taxons()?;
+        self.process_kraken_output()?;
+        self.process_reads()?;
+
+        self.output_summary()?;
+
+        info!("Complete!");
         Ok(())
     }
 }
