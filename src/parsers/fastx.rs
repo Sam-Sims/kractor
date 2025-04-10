@@ -162,3 +162,251 @@ pub fn write_output_fasta(rx: Receiver<fastq::Record>, out_file: &PathBuf) -> Re
 
     Ok(total_read_count)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use noodles::fastq;
+    use std::fs::File;
+    use std::io::{Read, Write};
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_infer_compression_gzip() {
+        let file_path = PathBuf::from("test.gz");
+        let compression = infer_compression(&file_path);
+
+        assert_eq!(compression, niffler::compression::Format::Gzip);
+    }
+
+    #[test]
+    fn test_infer_compression_bzip() {
+        let file_path = PathBuf::from("test.bz2");
+        let compression = infer_compression(&file_path);
+
+        assert_eq!(compression, niffler::compression::Format::Bzip);
+    }
+
+    #[test]
+    fn test_infer_compression_no_compression() {
+        let file_path = PathBuf::from("test.fastq");
+        let compression = infer_compression(&file_path);
+
+        assert_eq!(compression, niffler::compression::Format::No);
+    }
+
+    #[test]
+    fn test_parse_fastq_with_matches() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.fastq");
+        let test_data = b"@read1\nAAAA\n+\n!!!!\n@read2\nGGGG\n+\n!!!!\n@read3\nTTTT\n+\n!!!!\n";
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(test_data).unwrap();
+        let mut reads_to_save = FxHashSet::default();
+        reads_to_save.insert(b"read1".to_vec());
+        reads_to_save.insert(b"read3".to_vec());
+        let (tx, rx) = crossbeam::channel::unbounded();
+        parse_fastq(&file_path, &reads_to_save, &tx).unwrap();
+        drop(tx);
+        let results: Vec<fastq::Record> = rx.iter().collect();
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].name(), b"read1");
+        assert_eq!(results[1].name(), b"read3");
+        assert_eq!(results[0].sequence(), b"AAAA");
+        assert_eq!(results[1].sequence(), b"TTTT");
+    }
+
+    #[test]
+    fn test_parse_fastq_with_no_matches() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.fastq");
+        let test_data = b"@read1\nAAAA\n+\n!!!!\n@read2\nGGGG\n+\n!!!!\n@read3\nTTTT\n+\n!!!!\n";
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(test_data).unwrap();
+        let mut reads_to_save = FxHashSet::default();
+        reads_to_save.insert(b"read4".to_vec());
+        reads_to_save.insert(b"read5".to_vec());
+        let (tx, rx) = crossbeam::channel::unbounded();
+        parse_fastq(&file_path, &reads_to_save, &tx).unwrap();
+        drop(tx);
+        let results: Vec<fastq::Record> = rx.iter().collect();
+
+        assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_fastq_file_not_found() {
+        let file_path = PathBuf::from("idontexist.fastq");
+        let reads_to_save = FxHashSet::default();
+        let (tx, _rx) = crossbeam::channel::unbounded();
+        let result = parse_fastq(&file_path, &reads_to_save, &tx);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_write_output_fastq_non_compressed() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("output.fastq");
+        let (tx, rx) = crossbeam::channel::unbounded();
+        let record1 = fastq::Record::new(
+            fastq::record::Definition::new("read1", "read1"),
+            "AAAA",
+            "!!!!",
+        );
+        let record2 = fastq::Record::new(
+            fastq::record::Definition::new("read2", "read2"),
+            "GGGG",
+            "!!!!",
+        );
+        tx.send(record1).unwrap();
+        tx.send(record2).unwrap();
+        drop(tx);
+        let read_count = write_output_fastq(
+            rx,
+            &file_path,
+            Some(niffler::compression::Format::No),
+            niffler::Level::One,
+        )
+        .unwrap();
+        let file_content = fs::read_to_string(file_path).unwrap();
+
+        assert_eq!(read_count, 2);
+        assert!(file_content.contains("@read1"));
+        assert!(file_content.contains("AAAA"));
+        assert!(file_content.contains("@read2"));
+        assert!(file_content.contains("GGGG"));
+    }
+
+    #[test]
+    fn test_write_output_fastq_gzip() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("output.fastq");
+        let (tx, rx) = crossbeam::channel::unbounded();
+        let record1 = fastq::Record::new(
+            fastq::record::Definition::new("read1", "read1"),
+            "AAAA",
+            "!!!!",
+        );
+        let record2 = fastq::Record::new(
+            fastq::record::Definition::new("read2", "read2"),
+            "GGGG",
+            "!!!!",
+        );
+        tx.send(record1).unwrap();
+        tx.send(record2).unwrap();
+        drop(tx);
+        let read_count = write_output_fastq(
+            rx,
+            &file_path,
+            Some(niffler::compression::Format::Gzip),
+            niffler::Level::One,
+        )
+        .unwrap();
+        let reader =
+            niffler::get_reader(Box::new(BufReader::new(File::open(&file_path).unwrap()))).unwrap();
+        let mut decompressed = String::new();
+        let mut decompressed_reader = BufReader::new(reader.0);
+        decompressed_reader
+            .read_to_string(&mut decompressed)
+            .unwrap();
+
+        assert_eq!(read_count, 2);
+        assert!(decompressed.contains("@read1"));
+        assert!(decompressed.contains("AAAA"));
+        assert!(decompressed.contains("@read2"));
+        assert!(decompressed.contains("GGGG"));
+    }
+
+    #[test]
+    fn test_write_output_fastq_bzip() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("output.fastq");
+        let (tx, rx) = crossbeam::channel::unbounded();
+        let record1 = fastq::Record::new(
+            fastq::record::Definition::new("read1", "read1"),
+            "AAAA",
+            "!!!!",
+        );
+        let record2 = fastq::Record::new(
+            fastq::record::Definition::new("read2", "read2"),
+            "GGGG",
+            "!!!!",
+        );
+        tx.send(record1).unwrap();
+        tx.send(record2).unwrap();
+        drop(tx);
+        let read_count = write_output_fastq(
+            rx,
+            &file_path,
+            Some(niffler::compression::Format::Bzip),
+            niffler::Level::One,
+        )
+        .unwrap();
+        let reader =
+            niffler::get_reader(Box::new(BufReader::new(File::open(&file_path).unwrap()))).unwrap();
+        let mut decompressed = String::new();
+        let mut decompressed_reader = BufReader::new(reader.0);
+        decompressed_reader
+            .read_to_string(&mut decompressed)
+            .unwrap();
+
+        assert_eq!(read_count, 2);
+        assert!(decompressed.contains("@read1"));
+        assert!(decompressed.contains("AAAA"));
+        assert!(decompressed.contains("@read2"));
+        assert!(decompressed.contains("GGGG"));
+    }
+
+    #[test]
+    fn test_write_output_fasta_non_compressed() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("output.fasta");
+        let (tx, rx) = crossbeam::channel::unbounded();
+        let record1 = fastq::Record::new(
+            fastq::record::Definition::new("read1", "read1"),
+            "AAAA",
+            "!!!!",
+        );
+        let record2 = fastq::Record::new(
+            fastq::record::Definition::new("read2", "read2"),
+            "GGGG",
+            "!!!!",
+        );
+        tx.send(record1).unwrap();
+        tx.send(record2).unwrap();
+        drop(tx);
+        let read_count = write_output_fasta(rx, &file_path).unwrap();
+        let file_content = fs::read_to_string(file_path).unwrap();
+
+        assert_eq!(read_count, 2);
+        assert!(file_content.contains(">read1"));
+        assert!(file_content.contains("AAAA"));
+        assert!(file_content.contains(">read2"));
+        assert!(file_content.contains("GGGG"));
+    }
+
+    #[test]
+    fn test_write_output_fastq_error() {
+        let file_path = PathBuf::from("/noperms.fastq");
+        let (_, rx) = crossbeam::channel::unbounded();
+        let result = write_output_fastq(
+            rx,
+            &file_path,
+            Some(niffler::compression::Format::No),
+            niffler::Level::One,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_write_output_fasta_file_creation_error() {
+        let file_path = PathBuf::from("/noperms.fasta");
+        let (_, rx) = crossbeam::channel::unbounded();
+        let result = write_output_fasta(rx, &file_path);
+
+        assert!(result.is_err());
+    }
+}
