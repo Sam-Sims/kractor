@@ -388,4 +388,102 @@ mod tests {
         assert!(file_content2.contains(">read1"));
         assert!(file_content2.contains("TTTT"));
     }
+
+    fn create_test_kraken_report(dir: &tempfile::TempDir) -> PathBuf {
+        let report_path = dir.path().join("report.txt");
+        let test_data = "\
+        21.36\t745591\t745591\tU\t0\tunclassified
+        78.64\t2745487\t1646\tR\t1\troot
+        78.58\t2743340\t1360\tR1\t131567\t  cellular organisms
+        78.21\t2730479\t8458\tD\t2\t    Bacteria
+        61.55\t2148918\t1359\tD1\t1783272\t      Terrabacteria group
+        61.40\t2143487\t321\tP\t1239\t        Bacillota
+        61.37\t2142480\t8314\tC\t91062\t          Bacilli2
+        61.37\t2142480\t8314\tC\t91061\t          Bacilli
+        38.95\t1359681\t1300\tO\t1385\t            Bacillales
+        16.53\t577203\t366\tF\t186817\t              Bacillaceae
+        16.50\t576156\t22486\tG\t1386\t                Bacillus";
+
+        let mut file = File::create(&report_path).unwrap();
+        file.write_all(test_data.as_bytes()).unwrap();
+        report_path
+    }
+
+    #[test]
+    fn test_error_when_no_report_and_parents_or_children() {
+        let result = collect_taxons_to_save(&None, true, false, vec![1]);
+        assert!(result.is_err());
+        let result = collect_taxons_to_save(&None, false, true, vec![1]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_no_report() {
+        let taxids = vec![123, 456, 789];
+        let saved_taxons = collect_taxons_to_save(&None, false, false, taxids.clone()).unwrap();
+
+        assert_eq!(saved_taxons, taxids);
+    }
+
+    #[test]
+    fn test_no_parents_no_children() {
+        let dir = tempdir().unwrap();
+        let report_path = create_test_kraken_report(&dir);
+        let taxids = vec![1385, 1386, 91061];
+        let saved_taxons =
+            collect_taxons_to_save(&Some(report_path), false, false, taxids.clone()).unwrap();
+
+        assert_eq!(saved_taxons, taxids);
+    }
+
+    #[test]
+    fn test_children() {
+        let dir = tempdir().unwrap();
+        let report_path = create_test_kraken_report(&dir);
+        let taxids = vec![1239];
+        let saved_taxons = collect_taxons_to_save(&Some(report_path), true, false, taxids).unwrap();
+
+        assert!(saved_taxons.contains(&1239));
+        assert!(saved_taxons.contains(&91062));
+        assert!(saved_taxons.contains(&91061));
+    }
+
+    #[test]
+    fn test_parents() {
+        let dir = tempdir().unwrap();
+        let report_path = create_test_kraken_report(&dir);
+        let taxids = vec![91061];
+        let saved_taxons = collect_taxons_to_save(&Some(report_path), false, true, taxids).unwrap();
+
+        assert!(saved_taxons.contains(&91061));
+        assert!(saved_taxons.contains(&1239));
+        assert!(saved_taxons.contains(&1783272));
+        assert!(saved_taxons.contains(&131567));
+        assert!(saved_taxons.contains(&2));
+    }
+
+    #[test]
+    fn test_taxon_not_exist() {
+        let dir = tempdir().unwrap();
+        let report_path = create_test_kraken_report(&dir);
+        let taxids = vec![999];
+        let result = collect_taxons_to_save(&Some(report_path), true, false, taxids);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_dedup_and_sort() {
+        let taxids = vec![456, 123, 456, 789, 123];
+        let saved_taxons = collect_taxons_to_save(&None, false, false, taxids).unwrap();
+
+        assert_eq!(saved_taxons, vec![123, 456, 789]);
+    }
+
+    #[test]
+    fn test_empty_result() {
+        let result = collect_taxons_to_save(&None, false, false, vec![]);
+
+        assert!(result.is_err());
+    }
 }
