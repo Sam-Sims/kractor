@@ -75,8 +75,8 @@ pub fn process_single_end(
 /// * `fasta` - A boolean indicating whether to output in FASTA format.
 pub fn process_paired_end(
     reads_to_save: &FxHashSet<Vec<u8>>,
-    input: &Vec<PathBuf>,
-    output: &Vec<PathBuf>,
+    input: &[PathBuf],
+    output: &[PathBuf],
     compression_type: Option<niffler::Format>,
     compression_level: niffler::Level,
     fasta: bool,
