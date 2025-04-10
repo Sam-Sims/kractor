@@ -226,3 +226,166 @@ pub fn collect_taxons_to_save(
     }
     Ok(taxon_ids_to_save)
 }
+
+#[cfg(test)]
+
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_process_single_end_fastq() {
+        let dir = tempdir().unwrap();
+        let input_path = dir.path().join("input.fastq");
+        let output_path = dir.path().join("output.fastq");
+        let test_data = "@read1\nAAAA\n+\n!!!!\n@read2\nGGGG\n+\n!!!!\n";
+        let mut file = File::create(&input_path).unwrap();
+        file.write_all(test_data.as_bytes()).unwrap();
+        let mut reads_to_save = FxHashSet::default();
+        reads_to_save.insert(b"read1".to_vec());
+        let input = vec![input_path];
+        let output = vec![output_path.clone()];
+        let read_count = process_single_end(
+            &reads_to_save,
+            &input,
+            &output,
+            Some(niffler::compression::Format::No),
+            niffler::Level::One,
+            false,
+        )
+        .unwrap();
+        let file_content = std::fs::read_to_string(output_path).unwrap();
+
+        assert_eq!(read_count, 1);
+        assert!(file_content.contains("@read1"));
+        assert!(file_content.contains("AAAA"));
+        assert!(!file_content.contains("@read2"));
+    }
+
+    #[test]
+    fn test_process_single_end_fasta() {
+        let dir = tempdir().unwrap();
+        let input_path = dir.path().join("input.fastq");
+        let output_path = dir.path().join("output.fastq");
+        let test_data = "@read1\nAAAA\n+\n!!!!\n@read2\nGGGG\n+\n!!!!\n";
+        let mut file = File::create(&input_path).unwrap();
+        file.write_all(test_data.as_bytes()).unwrap();
+        let mut reads_to_save = FxHashSet::default();
+        reads_to_save.insert(b"read1".to_vec());
+        let input = vec![input_path];
+        let output = vec![output_path.clone()];
+        let read_count = process_single_end(
+            &reads_to_save,
+            &input,
+            &output,
+            Some(niffler::compression::Format::No),
+            niffler::Level::One,
+            true,
+        )
+        .unwrap();
+        let file_content = std::fs::read_to_string(output_path).unwrap();
+
+        assert_eq!(read_count, 1);
+        assert!(file_content.contains(">read1"));
+        assert!(file_content.contains("AAAA"));
+        assert!(!file_content.contains("@read2"));
+    }
+
+    #[test]
+    fn test_process_single_end_not_found() {
+        let nonexistent_path = PathBuf::from("idontexist.fastq");
+        let output_path = PathBuf::from("output.fastq");
+        let reads_to_save = FxHashSet::default();
+        let input = vec![nonexistent_path];
+        let output = vec![output_path];
+
+        let result = process_single_end(
+            &reads_to_save,
+            &input,
+            &output,
+            None,
+            niffler::Level::One,
+            false,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_process_paired_end_fastq() {
+        let dir = tempdir().unwrap();
+        let input_path1 = dir.path().join("input1.fastq");
+        let input_path2 = dir.path().join("input2.fastq");
+        let output_path1 = dir.path().join("output1.fastq");
+        let output_path2 = dir.path().join("output2.fastq");
+        let test_data1 = "@read1\nAAAA\n+\n!!!!\n@read2\nGGGG\n+\n!!!!\n";
+        let test_data2 = "@read1\nTTTT\n+\n!!!!\n@read2\nCCCC\n+\n!!!!\n";
+        let mut file1 = File::create(&input_path1).unwrap();
+        file1.write_all(test_data1.as_bytes()).unwrap();
+        let mut file2 = File::create(&input_path2).unwrap();
+        file2.write_all(test_data2.as_bytes()).unwrap();
+        let mut reads_to_save = FxHashSet::default();
+        reads_to_save.insert(b"read1".to_vec());
+        let input = vec![input_path1, input_path2];
+        let output = vec![output_path1.clone(), output_path2.clone()];
+        let (read_count1, read_count2) = process_paired_end(
+            &reads_to_save,
+            &input,
+            &output,
+            Some(niffler::compression::Format::No),
+            niffler::Level::One,
+            false,
+        )
+        .unwrap();
+        let file_content1 = std::fs::read_to_string(output_path1).unwrap();
+        let file_content2 = std::fs::read_to_string(output_path2).unwrap();
+
+        assert_eq!(read_count1, 1);
+        assert_eq!(read_count2, 1);
+        assert!(file_content1.contains("@read1"));
+        assert!(file_content1.contains("AAAA"));
+        assert!(!file_content1.contains("@read2"));
+        assert!(file_content2.contains("@read1"));
+        assert!(file_content2.contains("TTTT"));
+    }
+
+    #[test]
+    fn test_process_paired_end_fasta() {
+        let dir = tempdir().unwrap();
+        let input_path1 = dir.path().join("input1.fastq");
+        let input_path2 = dir.path().join("input2.fastq");
+        let output_path1 = dir.path().join("output1.fasta");
+        let output_path2 = dir.path().join("output2.fasta");
+        let test_data1 = "@read1\nAAAA\n+\n!!!!\n@read2\nGGGG\n+\n!!!!\n";
+        let test_data2 = "@read1\nTTTT\n+\n!!!!\n@read2\nCCCC\n+\n!!!!\n";
+        let mut file1 = File::create(&input_path1).unwrap();
+        file1.write_all(test_data1.as_bytes()).unwrap();
+        let mut file2 = File::create(&input_path2).unwrap();
+        file2.write_all(test_data2.as_bytes()).unwrap();
+        let mut reads_to_save = FxHashSet::default();
+        reads_to_save.insert(b"read1".to_vec());
+        let input = vec![input_path1, input_path2];
+        let output = vec![output_path1.clone(), output_path2.clone()];
+        let (read_count1, read_count2) = process_paired_end(
+            &reads_to_save,
+            &input,
+            &output,
+            Some(niffler::compression::Format::No),
+            niffler::Level::One,
+            true,
+        )
+        .unwrap();
+        let file_content1 = std::fs::read_to_string(output_path1).unwrap();
+        let file_content2 = std::fs::read_to_string(output_path2).unwrap();
+
+        assert_eq!(read_count1, 1);
+        assert_eq!(read_count2, 1);
+        assert!(file_content1.contains(">read1"));
+        assert!(file_content1.contains("AAAA"));
+        assert!(!file_content1.contains("@read2"));
+        assert!(file_content2.contains(">read1"));
+        assert!(file_content2.contains("TTTT"));
+    }
+}
