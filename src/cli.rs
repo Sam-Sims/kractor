@@ -8,29 +8,29 @@ use std::path::PathBuf;
     author = "Sam Sims"
 )]
 pub struct Cli {
-    // Fastq file(s)
+    /// Input file path(s). Accepts up to 2 files (for paired-end reads).
     #[arg(short = 'i', long = "input", num_args(0..=2), required = true)]
     pub input: Vec<PathBuf>,
-    // Output file(s)
+    /// Output file path(s). Accepts up to 2 files (for paired-end reads).
     #[arg(short = 'o', long = "output", num_args(0..=2), required = true)]
     pub output: Vec<PathBuf>,
-    // Kraken2 output file
+    /// Kraken2 stdout file path.
     #[arg(short = 'k', long = "kraken", required = true)]
     pub kraken: PathBuf,
-    // Kraken2 report file
+    /// Kraken2 report file path (Optional). Required when using --parents or --children.
     #[arg(short = 'r', long = "report", required_if_eq_any([("parents", "true"), ("children", "true")]))]
     pub report: Option<PathBuf>,
-    // Taxid to extract reads for
+    /// Taxonomic IDs to extract reads for. Use multiple times for multiple IDs.
     #[arg(short = 't', long = "taxid", required = true, num_args(1..))]
     pub taxid: Vec<i32>,
-    // Compression type
+    /// Compression format for output files. Overides the inferred format.
     #[arg(
         short = 'O',
         long = "compression-type",
         value_parser(validate_compression)
     )]
     pub output_type: Option<niffler::compression::Format>,
-    //Compression level
+    /// Compression level
     #[arg(
         short = 'l',
         long = "level",
@@ -38,22 +38,22 @@ pub struct Cli {
         value_parser(validate_compression_level)
     )]
     pub compression_level: niffler::Level,
-    // Extract reads from parents
+    /// Include all parent taxon IDs in the output.
     #[arg(long, action)]
     pub parents: bool,
-    // Extract reads from children
+    /// Include all child taxon IDs in the output.
     #[arg(long, action)]
     pub children: bool,
-    // Exclude reads matching taxid
+    /// Exclude specified taxon IDs from the output.
     #[arg(long)]
     pub exclude: bool,
-    // Output reads in FASTA format
+    /// Output results in FASTA format
     #[arg(long, action)]
     pub output_fasta: bool,
-    // Dont output json
+    /// Disable the JSON summary output.
     #[arg(long = "no-json")]
     pub no_json: bool,
-    // Verbose
+    /// Enable verbose output.
     #[arg(short)]
     pub verbose: bool,
 }
