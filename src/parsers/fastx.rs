@@ -9,17 +9,6 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use std::{fs, io};
 
-/// Parse a FASTQ file and send reads to writer thread.
-///
-/// This function reads a fastq file and extracts read IDs and sequences.
-/// It compares the read IDs against a given HashMap of read IDs (`reads_to_save`) and sends
-/// the sequences of matching read IDs to the writer thread.
-///
-/// # Arguments
-///
-/// * `file_path` - A string containing the path to the FASTQ file.
-/// * `reads_to_save` - A HashMap containing read IDs and their associated taxon IDs.
-/// * `tx` - A Sender channel to send the parsed reads to the writer thread.
 pub fn parse_fastq(
     file_path: &PathBuf,
     reads_to_save: &FxHashSet<Vec<u8>>,
@@ -58,19 +47,6 @@ pub fn parse_fastq(
     Ok(())
 }
 
-/// Infer the compression format from a file path based on its extension.
-///
-/// This function takes a file path as input and checks its file extension to determine
-/// the compression format. It supports all niffler compression  types
-/// If the extension is not recognized, it defaults to no compression.
-///
-/// # Arguments
-///
-/// * `file_path` - A reference to a `String` containing the file path to analyze.
-///
-/// # Returns
-///
-/// Niffler compression format.
 fn infer_compression(file_path: &PathBuf) -> niffler::compression::Format {
     let path = Path::new(&file_path);
     let ext = path.extension().unwrap().to_str().unwrap();
@@ -81,17 +57,6 @@ fn infer_compression(file_path: &PathBuf) -> niffler::compression::Format {
     }
 }
 
-/// Write fastq data to output file
-///
-/// This function takes received data from the provided Receiver channel corresponding to an inputfile and writes it to the specified output
-/// file to an output file, optionally applying compression.
-///
-/// # Arguments
-///
-/// * `rx`: A Receiver from which parsed fastq lines will be received.
-/// * `out_file`: A file representing the output file where data will be written.
-/// * `output_type`: The compression type to use for the output file.
-/// * `compression_level`: The compression level to use for the output file.
 pub fn write_output_fastq(
     rx: Receiver<fastq::Record>,
     out_file: &PathBuf,

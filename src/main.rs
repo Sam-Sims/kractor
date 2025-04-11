@@ -15,14 +15,6 @@ pub mod kractor;
 
 use kractor::Kractor;
 
-/// Initializes and configures the logger.
-///
-/// This function sets up the logger for the application When verbosity is enabled, log messages
-/// at the `Debug` level and above are output, else "Info" level is output.
-///
-/// # Arguments
-///
-/// * `verbose` - A boolean flag indicating whether verbose logging should be enabled.
 fn init_logging(verbose: bool) {
     let level_filter = if verbose {
         LevelFilter::Debug

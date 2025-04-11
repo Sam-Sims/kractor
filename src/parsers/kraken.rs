@@ -44,18 +44,7 @@ pub struct KrakenReportRecord {
     pub level: usize,
     pub name: String,
 }
-/// Parses a Kraken output line to extract taxon ID and read ID.
-///
-/// This function takes a Kraken output line and processes it to extract the taxon ID and read ID.
-/// It is called in the process_kraken_output function.
-///
-/// # Arguments
-///
-/// * `kraken_output` - A string representing a single line from Kraken output.
-///
-/// # Returns
-///
-/// A KrakenRecord containing the extracted information
+
 fn process_kraken_output_line(kraken_output: &str) -> Result<KrakenRecord> {
     let mut fields = kraken_output.split('\t');
 
@@ -93,20 +82,6 @@ fn process_kraken_output_line(kraken_output: &str) -> Result<KrakenRecord> {
     }
 }
 
-/// Processes the Kraken output file to extract read ID
-///
-/// This function takes the kraken output file and processes each line to extract the taxon id and read id.
-/// Read IDs that match the taxon IDs to save are stored in a hashmap.
-///
-/// # Arguments
-///
-/// `kraken_path` - A string containing the path to the Kraken output file.
-/// `exclude` - A boolean indicating whether to exclude or include the taxon IDs to save.
-/// `taxon_ids_to_save` - A vector containing the taxon IDs to save.
-///
-/// # Returns
-///
-/// A hashmap containing the read IDs to save as keys and the taxon IDs as values.
 pub fn process_kraken_output(
     kraken_path: &PathBuf,
     exclude: bool,
@@ -130,19 +105,6 @@ pub fn process_kraken_output(
     Ok(reads_to_save)
 }
 
-/// Parses a Kraken report line to extract taxon ID and its corresponding level.
-///
-/// This function takes a Kraken report line and processes it to extract the taxon ID
-/// and its taxonomic level. The level is calculated based on the indentation of the taxon name field.
-/// It is called in the process_kraken_report function.
-///
-/// # Arguments
-///
-/// * `kraken_report` - A string representing a single line from a Kraken report.
-///
-/// # Returns
-///
-/// A tuple containing the extracted taxon ID and its corresponding level.
 fn process_kraken_report_line(kraken_report: &str) -> Result<KrakenReportRecord> {
     let mut fields = kraken_report.split('\t');
 
@@ -208,19 +170,6 @@ fn process_kraken_report_line(kraken_report: &str) -> Result<KrakenReportRecord>
     }
 }
 
-/// Processes a Kraken report to build a tree of all taxa in the kraken report.
-///
-/// This function reads a Kraken report from the specified path and processes it to
-/// construct a taxonomic tree. Each node corresponds to a taxon.
-///
-/// # Arguments
-///
-/// * `taxon_to_save` - The taxon ID that needs to be saved.
-/// * `report_path` - A string containing the path to the Kraken report file.
-///
-/// # Returns
-///
-/// A tuple containing the tree and a hashmap mapping the saved taxon IDs to the tree.
 pub fn build_tree_from_kraken_report(
     taxon_to_save: &[i32],
     report_path: &PathBuf,
@@ -292,19 +241,6 @@ pub fn build_tree_from_kraken_report(
     Ok((nodes, taxon_map))
 }
 
-/// Extracts the taxon ID of all parents for a given taxon ID.
-///
-/// This function implements a backtracking traversal from the specified `taxon_id` to the root.
-///
-/// # Arguments
-///
-/// * `taxon_map` - Mapping of taxon IDs to their corresponding indices in the `nodes` vector.
-/// * `nodes` - The tree.
-/// * `taxon_id` - The taxon ID for which to extract the lineage of parent taxon IDs.
-///
-/// # Returns
-///
-/// A vector containing the taxon IDs of the lineage of parent nodes, including the provided taxon ID.
 pub fn extract_parents(
     taxon_map: &HashMap<i32, usize>,
     nodes: &[Tree],
@@ -334,21 +270,6 @@ pub fn extract_parents(
     Ok(parents)
 }
 
-/// Extracts the taxon IDs of children nodes from a given taxon ID.
-///
-/// This function implements a recursive post-order traversal of the tree starting from
-/// the specified taxon. It collects the taxon IDs of child nodes and appends them to the
-/// provided result vector.
-///
-/// # Arguments
-///
-/// * `nodes` - The tree.
-/// * `start_index` - The node to start the traversal from.
-/// * `result` - Stores the extracted child taxon IDs.
-///
-/// # Returns
-///
-/// A vector containing the taxon IDs of the children of the specified taxon ID, including the provided taxon ID.
 pub fn extract_children(nodes: &[Tree], start_index: usize, result: &mut Vec<i32>) -> Result<()> {
     // recursive post-order traversal of the tree
     if start_index >= nodes.len() {

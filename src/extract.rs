@@ -7,20 +7,6 @@ use log::debug;
 use noodles::fastq;
 use std::path::PathBuf;
 
-/// Process single-end reads from a FASTQ file.
-///
-/// This function runs the processing of single-end reads from a FASTQ file.
-/// It spawns two threads: one for reading and parsing the FASTQ file and another for writing
-/// the selected reads to an output file.
-///
-/// # Arguments
-///
-/// * `reads_to_save` - A HashMap containing read IDs and their associated taxon IDs.
-/// * `input` - A vector containing the paths to the input file.
-/// * `output` - A vector containing the paths to the output file.
-/// * `output_type` - The compression type to use for the output file.
-/// * `compression_level` - The compression level to use for the output file.
-/// * `fasta` - A boolean indicating whether the output should be in FASTA format.
 pub fn process_single_end(
     reads_to_save: &FxHashSet<Vec<u8>>,
     input: &[PathBuf],
@@ -59,20 +45,6 @@ pub fn process_single_end(
     .map_err(|_| eyre!("Thread communication error"))?
 }
 
-/// Process paired-end reads from FASTQ files.
-///
-/// This function runs the processing of paired-end reads from two FASTQ input files.
-/// It spawns two threads for reading and parsing each input file and two threads for writing
-/// selected reads to their respective output files.
-///
-/// # Arguments
-///
-/// * `reads_to_save` - A HashMap containing read IDs and their associated taxon IDs.
-/// * `input` - A vector containing the paths to the two input files.
-/// * `output` - A vector containing the paths to the two output files.
-/// * `compression_type` - The compression type to use for the output files.
-/// * `compression_level` - The compression level to use for the output files.
-/// * `fasta` - A boolean indicating whether to output in FASTA format.
 pub fn process_paired_end(
     reads_to_save: &FxHashSet<Vec<u8>>,
     input: &[PathBuf],
@@ -152,20 +124,6 @@ pub fn process_paired_end(
     .map_err(|_| eyre!("Thread communication error"))?
 }
 
-/// Collects taxon IDs to save.
-///
-/// This function determines what taxon IDs need to be saved from the kraken output.
-/// If a Kraken report is specified, it builds a tree of all taxons in the report and extracts taxon IDs based
-/// on if --children or --parent are supplied. If no report is provided, the function returns only the given taxon ID
-/// in the list of taxon IDs to save.
-///
-/// # Arguments
-///
-/// * `args` - The Args structure containing command-line arguments.
-///
-/// # Returns
-///
-/// A vector of taxon IDs that need to be saved.
 pub fn collect_taxons_to_save(
     report: &Option<PathBuf>,
     children: bool,
