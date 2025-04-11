@@ -108,7 +108,7 @@ impl Kractor {
 
     fn output_summary(&self) -> Result<()> {
         if let Some(summary) = &self.summary {
-            if !self.args.no_json {
+            if self.args.json {
                 let json = serde_json::to_string_pretty(summary)?;
                 println!("{}", json);
             }

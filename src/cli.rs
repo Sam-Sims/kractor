@@ -50,9 +50,9 @@ pub struct Cli {
     /// Output results in FASTA format
     #[arg(long, action)]
     pub output_fasta: bool,
-    /// Disable the JSON summary output.
-    #[arg(long = "no-json")]
-    pub no_json: bool,
+    /// Enable a JSON summary output written to stdout.
+    #[arg(long = "json-report")]
+    pub json: bool,
     /// Enable verbose output.
     #[arg(short)]
     pub verbose: bool,
