@@ -69,7 +69,6 @@ impl Kractor {
         let input_format = if paired { "paired" } else { "single" };
 
         let reads_output = if paired {
-            info!("Processing paired-end reads");
             let (count1, count2) = process_paired_end(
                 &self.reads_to_save,
                 &self.args.input,
@@ -85,7 +84,6 @@ impl Kractor {
                 read2: count2,
             }
         } else {
-            info!("Processing single-end reads");
             let total = process_single_end(
                 &self.reads_to_save,
                 &self.args.input,
@@ -119,13 +117,18 @@ impl Kractor {
     }
 
     pub fn run(&mut self) -> Result<()> {
+        info!(
+            "Starting kractor at {}",
+            chrono::Local::now().format("%H:%M:%S")
+        );
         self.collect_taxons()?;
+        info!("{} taxons identified to save", self.taxon_ids.len());
+        info!("Processing Kraken2 output file");
         self.process_kraken_output()?;
+        info!("Processing reads");
         self.process_reads()?;
-
         self.output_summary()?;
-
-        info!("Complete!");
+        info!("Complete at {}", chrono::Local::now().format("%H:%M:%S"));
         Ok(())
     }
 }

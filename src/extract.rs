@@ -3,7 +3,7 @@ use crate::parsers::kraken::{build_tree_from_kraken_report, extract_children, ex
 use color_eyre::{eyre::bail, eyre::eyre, eyre::WrapErr, Result};
 use crossbeam::{channel, thread};
 use fxhash::FxHashSet;
-use log::{debug, info};
+use log::debug;
 use noodles::fastq;
 use std::path::PathBuf;
 
@@ -180,7 +180,6 @@ pub fn collect_taxons_to_save(
     }
 
     if let Some(report_path) = report {
-        info!("Processing kraken report...");
         let (nodes, taxon_map) = build_tree_from_kraken_report(&taxids, report_path)
             .wrap_err("Failed to build tree from Kraken report")?;
 

@@ -1,6 +1,6 @@
 use color_eyre::{eyre::bail, eyre::eyre, eyre::Context, Result};
 use fxhash::FxHashSet;
-use log::{debug, info};
+use log::debug;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -112,7 +112,6 @@ pub fn process_kraken_output(
     exclude: bool,
     taxon_ids_to_save: &[i32],
 ) -> Result<FxHashSet<Vec<u8>>> {
-    info!("Processing kraken output...");
     let taxon_ids_to_save: HashSet<i32> = taxon_ids_to_save.iter().cloned().collect();
     let mut reads_to_save = FxHashSet::default();
     let kraken_file = fs::File::open(kraken_path)
