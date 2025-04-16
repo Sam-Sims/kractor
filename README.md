@@ -36,7 +36,7 @@ learn rust.
 ### Binaries:
 
 Precompiled binaries for Linux, MacOS and Windows are attached to the latest
-release [0.4.0](https://github.com/Sam-Sims/Kractor/releases/tag/v0.4.0)
+release [1.0.0](https://github.com/Sam-Sims/kractor/releases/tag/kractor-1.0.0)
 
 ### Docker:
 
