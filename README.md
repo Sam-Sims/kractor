@@ -5,7 +5,7 @@
 [![test](https://github.com/Sam-Sims/kractor/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/Sam-Sims/kractor/actions/workflows/test.yaml)
 [![check](https://github.com/Sam-Sims/kractor/actions/workflows/check.yaml/badge.svg?branch=main)](https://github.com/Sam-Sims/kractor/actions/workflows/check.yaml)
 
-# Kractor
+# kractor
 
 **kra**ken extr**actor**
 
@@ -14,7 +14,7 @@ via [Kraken2](https://github.com/DerrickWood/kraken2). It consumes paired or unp
 alongisde a Kraken2 standard output. It can optionally consume a Kraken2 report to extract all taxonomic parents and
 children of a given taxid. Fast and multithreaded by default, it outputs `fast[q/a]` files, that can optionally be
 compressed. Memory usage
-is minimal, averaging ~4.5MB processing a 17GB fastq file.
+is minimal, averaging ~4.5MB while processing a 17GB fastq file.
 
 The end result is a `fast[q/a]` file containing all reads classified as the specified taxon.
 
@@ -28,7 +28,7 @@ For additional details, refer to the [benchmarks](benchmarks/benchmarks.md)
 
 Inspired by [KrakenTools](https://github.com/jenniferlu717/KrakenTools).
 
-The main motivation was to enchance speed when parsing and extracting (writing) a large volume of reads - and also to
+The main motivation was to enchance speed when parsing, extracting, and writing a large volume of reads - and also to
 learn rust.
 
 ## Installation
