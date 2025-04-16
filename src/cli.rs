@@ -1,40 +1,36 @@
 use clap::Parser;
-use log::error;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(
     version,
-    about = "Extract reads from a FASTQ file based on taxonomic classification via Kraken2."
+    about = "Extract reads from a FASTQ file based on taxonomic classification via Kraken2.",
+    author = "Sam Sims"
 )]
 pub struct Cli {
-    // Fastq file(s)
-    #[arg(short = 'i', long = "input", num_args(0..=2), required = true, value_parser(check_input_exists))]
-    pub input: Vec<String>,
-    // Output file(s)
+    /// Input file path(s). Accepts up to 2 files (for paired-end reads).
+    #[arg(short = 'i', long = "input", num_args(0..=2), required = true)]
+    pub input: Vec<PathBuf>,
+    /// Output file path(s). Accepts up to 2 files (for paired-end reads).
     #[arg(short = 'o', long = "output", num_args(0..=2), required = true)]
-    pub output: Vec<String>,
-    // Kraken2 output file
-    #[arg(
-        short = 'k',
-        long = "kraken",
-        required = true,
-        value_parser(check_input_exists)
-    )]
-    pub kraken: String,
-    // Kraken2 report file
-    #[arg(short = 'r', long = "report", value_parser(check_input_exists))]
-    pub report: Option<String>,
-    // Taxid to extract reads for
-    #[arg(short = 't', long = "taxid", required = true)]
-    pub taxid: i32,
-    // Compression type
+    pub output: Vec<PathBuf>,
+    /// Kraken2 stdout file path.
+    #[arg(short = 'k', long = "kraken", required = true)]
+    pub kraken: PathBuf,
+    /// Kraken2 report file path (Optional). Required when using --parents or --children.
+    #[arg(short = 'r', long = "report", required_if_eq_any([("parents", "true"), ("children", "true")]))]
+    pub report: Option<PathBuf>,
+    /// Taxonomic IDs to extract reads for. Use multiple times for multiple IDs.
+    #[arg(short = 't', long = "taxid", required = true, num_args(1..))]
+    pub taxid: Vec<i32>,
+    /// Compression format for output files. Overides the inferred format.
     #[arg(
         short = 'O',
         long = "compression-type",
         value_parser(validate_compression)
     )]
     pub output_type: Option<niffler::compression::Format>,
-    //Compression level
+    /// Compression level
     #[arg(
         short = 'l',
         long = "level",
@@ -42,47 +38,24 @@ pub struct Cli {
         value_parser(validate_compression_level)
     )]
     pub compression_level: niffler::Level,
-    // Extract reads from parents
+    /// Include all parent taxon IDs in the output.
     #[arg(long, action)]
     pub parents: bool,
-    // Extract reads from children
+    /// Include all child taxon IDs in the output.
     #[arg(long, action)]
     pub children: bool,
-    // Exclude reads matching taxid
+    /// Exclude specified taxon IDs from the output.
     #[arg(long)]
     pub exclude: bool,
-    // Output reads in FASTA format
+    /// Output results in FASTA format
     #[arg(long, action)]
     pub output_fasta: bool,
-    // Dont output json
-    #[arg(long = "no-json")]
-    pub no_json: bool,
-    // Verbose
+    /// Enable a JSON summary output written to stdout.
+    #[arg(long = "json-report")]
+    pub json: bool,
+    /// Enable verbose output.
     #[arg(short)]
     pub verbose: bool,
-}
-
-impl Cli {
-    pub fn validate_input(&self) {
-        let in_count = self.input.len();
-        let out_count = self.output.len();
-        if in_count > 2 {
-            error!("Too many input files specified. Only 1 or 2 are allowed.");
-            std::process::exit(1);
-        }
-        if out_count > 2 {
-            error!("Too many output files specified. Only 1 or 2 are allowed.");
-            std::process::exit(1);
-        }
-        if in_count == 2 && out_count == 1 {
-            error!("Two input files specified but only one output file specified.");
-            std::process::exit(1);
-        }
-        if in_count == 1 && out_count == 2 {
-            error!("One input file specified but two output files specified.");
-            std::process::exit(1);
-        }
-    }
 }
 
 fn validate_compression(s: &str) -> Result<niffler::compression::Format, String> {
@@ -91,14 +64,6 @@ fn validate_compression(s: &str) -> Result<niffler::compression::Format, String>
         "bz2" => Ok(niffler::compression::Format::Bzip),
         "none" => Ok(niffler::compression::Format::No),
         _ => Err(format!("Unknown compression type: {}", s)),
-    }
-}
-
-fn check_input_exists(s: &str) -> Result<String, String> {
-    if std::path::Path::new(s).exists() {
-        Ok(s.to_string())
-    } else {
-        Err(format!("File does not exist: {}", s))
     }
 }
 

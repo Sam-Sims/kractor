@@ -1,6 +1,6 @@
 [package]
 name = "kractor"
-version = "0.4.0"
+version = "1.0.0"
 edition = "2021"
 authors = ["Samuel Sims"]
 description = "Extract reads from a FASTQ file based on taxonomic classification via Kraken2."
@@ -14,14 +14,21 @@ documentation = "https://docs.rs/crate/kractor/"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-chrono = "0.4.31"
-clap = { version = "4.3.19", features = ["derive"] }
-crossbeam = "0.8.2"
+chrono = "0.4.40"
+clap = { version = "4.3.36", features = ["derive"] }
+crossbeam = "0.8.4"
 env_logger = "0.10.0"
-lazy_static = "1.4.0"
-log = "0.4.20"
-niffler = { version = "2.5.0", default-features = false, features = ["gz", "bz2", "gz_cloudflare_zlib"] }
-noodles = { version = "0.51.0", features = ["fastq", "fasta"] }
-serde_json = "1.0.107"
+fxhash = "0.2.1"
+log = "0.4.27"
+
+niffler = { version = "3.0.0", default-features = false, features = ["gz", "bz2"] }
+bzip2 = "0.5.2"
+flate2 = { version = "1.1.1", features = ["zlib-rs"] }
+
+noodles = { version = "0.97.0", features = ["fastq", "fasta"] }
+serde_json = "1.0.140"
+serde = { version = "1.0.219", features = ["derive"] }
+color-eyre = "0.6.3"
+tempfile = "3.19.1"
 
 

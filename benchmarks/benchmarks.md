@@ -21,9 +21,9 @@ ONT long read sequencing, input `fastq` format, outputting a non-compressed `fas
 
 *Inputs:*
 
-| File type | Platform | Total reads | Reads to extract | Kraken output size| Output|
-|-----------|----------|-------------|------------------|-------------------|-------|
-|`.fastq`   |ONT       |3,491,078    |490,984         |885MB             |`.fastq`
+| File type | Platform | Total reads | Reads to extract | Kraken output size | Output   |
+|-----------|----------|-------------|------------------|--------------------|----------|
+| `.fastq`  | ONT      | 3,491,078   | 490,984          | 885MB              | `.fastq` |
 
 *Commands run:*
 
@@ -45,16 +45,16 @@ ONT long read sequencing, input `fastq.gz` format, outputting a non-compressed `
 
 *Inputs:*
 
-| File type | Platform | Total reads | Reads to extract | Kraken output size| Output|
-|-----------|----------|-------------|------------------|-------------------|-------|
-|`.fastq.gz`|ONT       |3,491,078    |490,984        |885MB              |`.fastq`
+| File type   | Platform | Total reads | Reads to extract | Kraken output size | Output   |
+|-------------|----------|-------------|------------------|--------------------|----------|
+| `.fastq.gz` | ONT      | 3,491,078   | 490,984          | 885MB              | `.fastq` |
 
 *Commands run:*
 
-| Tool | Command   |
-|------|---------|
+| Tool        | Command                                                                                                             |
+|-------------|---------------------------------------------------------------------------------------------------------------------|
 | KrakenTools | `extract_kraken_reads.py -s Zymo-GridION-EVEN-BB-SN.fq.gz -k out.kraken  -o krakentools.fq -t 96241 --fastq-output` |
-| Kractor | `kractor -i Zymo-GridION-EVEN-BB-SN.fq.gz -k out.kraken -o kractor.fq -t 96241` |
+| Kractor     | `kractor -i Zymo-GridION-EVEN-BB-SN.fq.gz -k out.kraken -o kractor.fq -t 96241`                                     |
 
 
 *Results:*
@@ -72,43 +72,45 @@ Illumina paired end sequencing, input `fastq` format, outputting a non-compresse
 
 *Inputs:*
 
-| File type | Platform | Total reads | Reads to extract | Kraken output size| Output|
-|-----------|----------|-------------|------------------|-------------------|-------|
-|`.fastq`|Illumina paired       |53,526,611    |1,646,117        |9.3GB              |`.fastq`
+| File type | Platform        | Total reads | Reads to extract | Kraken output size | Output   |
+|-----------|-----------------|-------------|------------------|--------------------|----------|
+| `.fastq`  | Illumina paired | 53,526,611  | 1,646,117        | 9.3GB              | `.fastq` |
 
 *Commands run:*
 
-| Tool | Command   |
-|------|---------|
+| Tool        | Command                                                                                                                                       |
+|-------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
 | KrakenTools | `extract_kraken_reads.py -s SRR19995508_R1.fastq -s2 SRR19995508_R2.fastq -o R1_tools.fq -o2 R2_tools.fq -k out.kraken -t 590 --fastq-output` |
-| Kractor | `kractor -i SRR19995508_R1.fastq -i SRR19995508_R2.fastq -k out.kraken -t 590 -o R1_kractor.fq -o R2_kractor.fq` |
+| Kractor     | `kractor -i SRR19995508_R1.fastq -i SRR19995508_R2.fastq -k out.kraken -t 590 -o R1_kractor.fq -o R2_kractor.fq`                              |
 
 
 *Results:*
-| Command | Mean [s] | Min [s] | Max [s] | Relative |
-|:---|---:|---:|---:|---:|
-| `krakenTools` | 898.306 ± 14.203 | 884.229 | 920.653 | 1.00 |
-| `Kractor` | 94.198 ± 2.317 | 90.852 | 96.474 | 9.54 ± 0.28 |
+
+| Command       | Mean [s]         | Min [s] | Max [s] | Relative    |
+|---------------|------------------|---------|---------|-------------|
+| `krakenTools` | 898.306 ± 14.203 | 884.229 | 920.653 | 1.00        |
+| `Kractor`     | 94.198 ± 2.317   | 90.852  | 96.474  | 9.54 ± 0.28 |
 
 ### Benchmark 4:
 Illumina paired end sequencing, input `fastq.gz` format, outputting a non-compressed `fastq` file.
 
 *Inputs:*
 
-| File type | Platform | Total reads | Reads to extract | Kraken output size| Output|
-|-----------|----------|-------------|------------------|-------------------|-------|
-|`.fastq.gz`|Illumina paired       |53,526,611    |1,646,117        |9.3GB              |`.fastq`
+| File type   | Platform        | Total reads | Reads to extract | Kraken output size | Output   |
+|-------------|-----------------|-------------|------------------|--------------------|----------|
+| `.fastq.gz` | Illumina paired | 53,526,611  | 1,646,117        | 9.3GB              | `.fastq` |
 
 *Commands run:*
 
-| Tool | Command   |
-|------|---------|
+| Tool        | Command                                                                                                                                           |
+|-------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
 | KrakenTools | `extract_kraken_reads.py -s SRR19995508_R1.fastq.gz -s2 SRR19995508_R2.fastq.gz -o R1_tools.fq -o2 R2_tools.fq -k out.kraken -t 2 --fastq-output` |
-| Kractor | `kractor -i SRR19995508_R1.fastq.gz -i SRR19995508_R2.fastq.gz -k out.kraken -t 2 -o R1_kractor.fq -o R2_kractor.fq` |
+| Kractor     | `kractor -i SRR19995508_R1.fastq.gz -i SRR19995508_R2.fastq.gz -k out.kraken -t 2 -o R1_kractor.fq -o R2_kractor.fq`                              |
 
 
 *Results:*
-| Command | Mean [s] | Min [s] | Max [s] | Relative |
-|:---|---:|---:|---:|---:|
-| `krakenTools` | 1033.379 ± 25.238 | 1005.720 | 1068.522 | 1.00 |
-| `Kractor` | 49.071 ± 0.179 | 48.857 | 49.334 | 21.06 ± 0.52 |
+
+| Command       |          Mean [s] |  Min [s] |  Max [s] |     Relative |
+|:--------------|------------------:|---------:|---------:|-------------:|
+| `krakenTools` | 1033.379 ± 25.238 | 1005.720 | 1068.522 |         1.00 |
+| `Kractor`     |    49.071 ± 0.179 |   48.857 |   49.334 | 21.06 ± 0.52 |
