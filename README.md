@@ -12,7 +12,9 @@
 Kractor extracts sequencing reads based on taxonomic classifications obtained
 via [Kraken2](https://github.com/DerrickWood/kraken2). It consumes paired or unpaired `fastq[.gz/.bz]` files as input
 alongisde a Kraken2 standard output. It can optionally consume a Kraken2 report to extract all taxonomic parents and
-children of a given taxid. Fast by default, it outputs `fast[q/a]` files, that can optionally be compressed.
+children of a given taxid. Fast and multithreaded by default, it outputs `fast[q/a]` files, that can optionally be
+compressed. Memory usage
+is minimal, averaging ~4.5MB processing a 17GB fastq file.
 
 The end result is a `fast[q/a]` file containing all reads classified as the specified taxon.
 
