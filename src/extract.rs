@@ -14,8 +14,8 @@ pub fn process_single_end(
     compression_type: Option<niffler::Format>,
     compression_level: niffler::Level,
     fasta: bool,
-) -> Result<usize> {
-    thread::scope(|scope| -> Result<usize> {
+) -> Result<(usize, usize)> {
+    thread::scope(|scope| -> Result<(usize, usize)> {
         let (tx, rx) = channel::unbounded::<fastq::Record>();
 
         let reader = scope.spawn(|_| {
@@ -34,13 +34,13 @@ pub fn process_single_end(
             }
         });
 
-        reader
+        let total_reads_parsed = reader
             .join()
             .map_err(|_| eyre!("Reader thread panicked"))??;
         let total_reads_output = writer
             .join()
             .map_err(|_| eyre!("Writer thread panicked"))??;
-        Ok(total_reads_output)
+        Ok((total_reads_parsed, total_reads_output))
     })
     .map_err(|_| eyre!("Thread communication error"))?
 }
@@ -52,8 +52,8 @@ pub fn process_paired_end(
     compression_type: Option<niffler::Format>,
     compression_level: niffler::Level,
     fasta: bool,
-) -> Result<(usize, usize)> {
-    thread::scope(|scope| -> Result<(usize, usize)> {
+) -> Result<((usize, usize), (usize, usize))> {
+    thread::scope(|scope| -> Result<((usize, usize), (usize, usize))> {
         let (tx1, rx1) = channel::unbounded::<fastq::Record>();
         let (tx2, rx2) = channel::unbounded::<fastq::Record>();
 
@@ -107,19 +107,22 @@ pub fn process_paired_end(
             }
         });
 
-        reader1
+        let total_parsed1 = reader1
             .join()
             .map_err(|_| eyre!("Reader thread for file1 panicked"))??;
-        reader2
+        let total_parsed2 = reader2
             .join()
             .map_err(|_| eyre!("Reader thread for file2 panicked"))??;
-        let total_reads_output_pair1 = writer1
+        let total_reads_output1 = writer1
             .join()
             .map_err(|_| eyre!("Writer thread for file1 panicked"))??;
-        let total_reads_output_pair2 = writer2
+        let total_reads_output2 = writer2
             .join()
             .map_err(|_| eyre!("Writer thread for file2 panicked"))??;
-        Ok((total_reads_output_pair1, total_reads_output_pair2))
+        Ok((
+            (total_parsed1, total_reads_output1),
+            (total_parsed2, total_reads_output2),
+        ))
     })
     .map_err(|_| eyre!("Thread communication error"))?
 }
@@ -204,7 +207,7 @@ mod tests {
         reads_to_save.insert(b"read1".to_vec());
         let input = vec![input_path];
         let output = vec![output_path.clone()];
-        let read_count = process_single_end(
+        let (reads_parsed, reads_output) = process_single_end(
             &reads_to_save,
             &input,
             &output,
@@ -215,7 +218,7 @@ mod tests {
         .unwrap();
         let file_content = std::fs::read_to_string(output_path).unwrap();
 
-        assert_eq!(read_count, 1);
+        assert_eq!(reads_output, 1);
         assert!(file_content.contains("@read1"));
         assert!(file_content.contains("AAAA"));
         assert!(!file_content.contains("@read2"));
@@ -233,7 +236,7 @@ mod tests {
         reads_to_save.insert(b"read1".to_vec());
         let input = vec![input_path];
         let output = vec![output_path.clone()];
-        let read_count = process_single_end(
+        let (reads_parsed, reads_output) = process_single_end(
             &reads_to_save,
             &input,
             &output,
@@ -244,7 +247,7 @@ mod tests {
         .unwrap();
         let file_content = std::fs::read_to_string(output_path).unwrap();
 
-        assert_eq!(read_count, 1);
+        assert_eq!(reads_output, 1);
         assert!(file_content.contains(">read1"));
         assert!(file_content.contains("AAAA"));
         assert!(!file_content.contains("@read2"));
@@ -287,7 +290,7 @@ mod tests {
         reads_to_save.insert(b"read1".to_vec());
         let input = vec![input_path1, input_path2];
         let output = vec![output_path1.clone(), output_path2.clone()];
-        let (read_count1, read_count2) = process_paired_end(
+        let ((reads_parsed1, reads_output1), (reads_parsed2, reads_output2)) = process_paired_end(
             &reads_to_save,
             &input,
             &output,
@@ -299,8 +302,8 @@ mod tests {
         let file_content1 = std::fs::read_to_string(output_path1).unwrap();
         let file_content2 = std::fs::read_to_string(output_path2).unwrap();
 
-        assert_eq!(read_count1, 1);
-        assert_eq!(read_count2, 1);
+        assert_eq!(reads_output1, 1);
+        assert_eq!(reads_output2, 1);
         assert!(file_content1.contains("@read1"));
         assert!(file_content1.contains("AAAA"));
         assert!(!file_content1.contains("@read2"));
@@ -325,7 +328,7 @@ mod tests {
         reads_to_save.insert(b"read1".to_vec());
         let input = vec![input_path1, input_path2];
         let output = vec![output_path1.clone(), output_path2.clone()];
-        let (read_count1, read_count2) = process_paired_end(
+        let ((reads_parsed1, reads_output1), (reads_parsed2, reads_output2)) = process_paired_end(
             &reads_to_save,
             &input,
             &output,
@@ -337,8 +340,8 @@ mod tests {
         let file_content1 = std::fs::read_to_string(output_path1).unwrap();
         let file_content2 = std::fs::read_to_string(output_path2).unwrap();
 
-        assert_eq!(read_count1, 1);
-        assert_eq!(read_count2, 1);
+        assert_eq!(reads_output1, 1);
+        assert_eq!(reads_output2, 1);
         assert!(file_content1.contains(">read1"));
         assert!(file_content1.contains("AAAA"));
         assert!(!file_content1.contains("@read2"));

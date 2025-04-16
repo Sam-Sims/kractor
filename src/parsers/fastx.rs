@@ -13,7 +13,7 @@ pub fn parse_fastq(
     file_path: &PathBuf,
     reads_to_save: &FxHashSet<Vec<u8>>,
     tx: &Sender<fastq::Record>,
-) -> Result<()> {
+) -> Result<usize> {
     let mut num_reads = 0;
 
     let mut last_progress_update = Instant::now();
@@ -44,7 +44,7 @@ pub fn parse_fastq(
         }
     }
 
-    Ok(())
+    Ok(num_reads)
 }
 
 fn infer_compression(file_path: &PathBuf) -> niffler::compression::Format {

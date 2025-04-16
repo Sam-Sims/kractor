@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 struct Summary {
     taxon_count: usize,
     taxon_ids: Vec<i32>,
-    reads_output: ReadCounts,
+    reads_in: ReadCounts,
+    reads_out: ReadCounts,
     input_format: String,
 }
 
@@ -68,23 +69,38 @@ impl Kractor {
         let paired = self.args.input.len() == 2;
         let input_format = if paired { "paired" } else { "single" };
 
-        let reads_output = if paired {
-            let (count1, count2) = process_paired_end(
-                &self.reads_to_save,
-                &self.args.input,
-                &self.args.output,
-                self.args.output_type,
-                self.args.compression_level,
-                self.args.output_fasta,
-            )?;
+        if paired {
+            let ((reads_parsed1, reads_output1), (reads_parsed2, reads_output2)) =
+                process_paired_end(
+                    &self.reads_to_save,
+                    &self.args.input,
+                    &self.args.output,
+                    self.args.output_type,
+                    self.args.compression_level,
+                    self.args.output_fasta,
+                )?;
 
-            ReadCounts::Paired {
-                total: count1 + count2,
-                read1: count1,
-                read2: count2,
-            }
+            let reads_in = ReadCounts::Paired {
+                total: reads_parsed1 + reads_parsed2,
+                read1: reads_parsed1,
+                read2: reads_parsed2,
+            };
+
+            let reads_out = ReadCounts::Paired {
+                total: reads_output1 + reads_output2,
+                read1: reads_output1,
+                read2: reads_output2,
+            };
+
+            self.summary = Some(Summary {
+                taxon_count: self.taxon_ids.len(),
+                taxon_ids: self.taxon_ids.clone(),
+                reads_in,
+                reads_out,
+                input_format: input_format.to_string(),
+            });
         } else {
-            let total = process_single_end(
+            let (reads_parsed1, reads_output1) = process_single_end(
                 &self.reads_to_save,
                 &self.args.input,
                 &self.args.output,
@@ -93,15 +109,21 @@ impl Kractor {
                 self.args.output_fasta,
             )?;
 
-            ReadCounts::Single { total }
-        };
+            let reads_in = ReadCounts::Single {
+                total: reads_parsed1,
+            };
+            let reads_out = ReadCounts::Single {
+                total: reads_output1,
+            };
 
-        self.summary = Some(Summary {
-            taxon_count: self.taxon_ids.len(),
-            taxon_ids: self.taxon_ids.clone(),
-            reads_output,
-            input_format: input_format.to_string(),
-        });
+            self.summary = Some(Summary {
+                taxon_count: self.taxon_ids.len(),
+                taxon_ids: self.taxon_ids.clone(),
+                reads_in,
+                reads_out,
+                input_format: input_format.to_string(),
+            });
+        }
 
         Ok(())
     }
