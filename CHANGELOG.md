@@ -1,7 +1,19 @@
-
 ## Changelog
 
+### 1.0.0
+
+- better error handling with color-eyre #16
+- panics are now handled properly #16
+- keep fastq parsing in bytes, and not converting to String #17
+- optimise functions to take &Str instead of String #21
+- fix the root node being added to the tree twice #22
+- moved to crossbeam scoped channels and tidied up threading code
+- refactored json output and removed need for lazy_static
+- reads in and accurate number of reads out included in json report #15
+- added tests to most functions
+
 ### 0.4.0
+
 - Json report including in stdout upon successful completion (can be disabled with --no-json)
 - Renamed
 
