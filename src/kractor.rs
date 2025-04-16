@@ -127,8 +127,8 @@ impl Kractor {
         self.process_kraken_output()?;
         info!("Processing reads");
         self.process_reads()?;
-        self.output_summary()?;
         info!("Complete at {}", chrono::Local::now().format("%H:%M:%S"));
+        self.output_summary()?;
         Ok(())
     }
 }
