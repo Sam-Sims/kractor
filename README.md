@@ -1,7 +1,7 @@
 ![GitHub release (with filter)](https://img.shields.io/github/v/release/sam-sims/Kractor)
 ![crates.io](https://img.shields.io/crates/v/kractor
 )
-![Docker Pulls](https://img.shields.io/docker/pulls/samsims/kractor)
+![](https://anaconda.org/bioconda/kractor/badges/version.svg)
 [![test](https://github.com/Sam-Sims/kractor/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/Sam-Sims/kractor/actions/workflows/test.yaml)
 [![check](https://github.com/Sam-Sims/kractor/actions/workflows/check.yaml/badge.svg?branch=main)](https://github.com/Sam-Sims/kractor/actions/workflows/check.yaml)
 
@@ -34,15 +34,36 @@ learn rust.
 ## Installation
 
 ### Binaries:
+![](https://img.shields.io/github/downloads/sam-sims/kractor/total
+)
 
 Precompiled binaries for Linux, MacOS and Windows are attached to the latest
 release [1.0.0](https://github.com/Sam-Sims/kractor/releases/tag/kractor-1.0.0)
 
+### Conda:
+
+![](https://anaconda.org/bioconda/kractor/badges/downloads.svg)
+
+![](https://anaconda.org/bioconda/kractor/badges/platforms.svg)
+
+
+With conda installed, and bioconda channel correctly setup:
+
+```
+conda install kractor
+```
+
 ### Docker:
 
-A docker image is available on [Docker Hub](https://hub.docker.com/r/samsims/kractor)
+A docker image is available on [quay.io](https://quay.io/repository/biocontainers/kractor)
+
+```
+docker pull quay.io/biocontainers/kractor
+```
 
 ### Cargo:
+![](https://img.shields.io/crates/d/kractor
+)
 
 Requires [cargo](https://www.rust-lang.org/tools/install)
 
@@ -131,7 +152,12 @@ This option will specify the path to the Kraken2 output containing taxonomic cla
 
 `-t, --taxid`
 
-This option will specify the taxon ID for reads you want to extract.
+This option will specify the taxon ID for reads you want to extract. 
+
+Multiple taxids can be specified:
+`-t 1 2 10`.
+
+Each taxid will adhere to `--exclude` `--parents` and `--children`
 
 ### Optional:
 
@@ -187,7 +213,7 @@ This will extract all the reads classified as decendents or subtaxa of `--taxid`
 
 This will output every read except those matching the taxid. Works with `--parents` and `--children`
 
-#### Skip report
+#### JSON report
 
 `--json-report`
 
