@@ -34,15 +34,11 @@ learn rust.
 ## Installation
 
 ### Binaries:
-![](https://img.shields.io/github/downloads/sam-sims/kractor/total
-)
 
 Precompiled binaries for Linux, MacOS and Windows are attached to the latest
 release [1.0.0](https://github.com/Sam-Sims/kractor/releases/tag/kractor-1.0.0)
 
 ### Conda:
-
-![](https://anaconda.org/bioconda/kractor/badges/downloads.svg)
 
 ![](https://anaconda.org/bioconda/kractor/badges/platforms.svg)
 
@@ -62,8 +58,6 @@ docker pull quay.io/biocontainers/kractor
 ```
 
 ### Cargo:
-![](https://img.shields.io/crates/d/kractor
-)
 
 Requires [cargo](https://www.rust-lang.org/tools/install)
 
