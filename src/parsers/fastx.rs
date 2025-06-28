@@ -1,4 +1,4 @@
-use color_eyre::eyre::{Context, Result};
+use color_eyre::eyre::{eyre, Context, Result};
 use crossbeam::channel::{Receiver, Sender};
 use fxhash::FxHashSet;
 use log::{debug, trace};
@@ -81,6 +81,9 @@ pub fn write_output_fastq(
         compression_level
     );
     debug!("Creating output file: {:?}", out_file);
+
+    fs::create_dir_all(out_file.parent().unwrap())
+        .wrap_err_with(|| format!("Failed to create output directory: {:?}", out_file))?;
 
     let out_file = fs::File::create(out_file)
         .wrap_err_with(|| format!("Failed to create output file: {:?}", out_file))?;
@@ -373,5 +376,62 @@ mod tests {
         let result = write_output_fasta(rx, &file_path);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_output_subdirs_dont_exist() {
+        let dir = tempdir().unwrap();
+        let subdir = dir.path().join("subdir1");
+        let subdir = subdir.join("subdir2");
+        let file_path = subdir.join("output.fastq");
+        assert!(!subdir.exists());
+        let (tx, rx) = crossbeam::channel::unbounded();
+        let record1 = fastq::Record::new(
+            fastq::record::Definition::new("read1", "read1"),
+            "AAAA",
+            "!!!!",
+        );
+        tx.send(record1).unwrap();
+        drop(tx);
+
+        let read_count = write_output_fastq(
+            rx,
+            &file_path,
+            Some(niffler::compression::Format::No),
+            niffler::Level::One,
+        )
+        .unwrap();
+
+        assert_eq!(read_count, 1);
+        assert!(subdir.exists());
+    }
+
+    #[test]
+    fn test_output_subdirs_already_exist() {
+        let dir = tempdir().unwrap();
+        let subdir = dir.path().join("subdir1");
+        let subdir = subdir.join("subdir2");
+        let file_path = subdir.join("output.fastq");
+        fs::create_dir_all(&subdir).unwrap();
+        assert!(subdir.exists());
+        let (tx, rx) = crossbeam::channel::unbounded();
+        let record1 = fastq::Record::new(
+            fastq::record::Definition::new("read1", "read1"),
+            "AAAA",
+            "!!!!",
+        );
+        tx.send(record1).unwrap();
+        drop(tx);
+
+        let read_count = write_output_fastq(
+            rx,
+            &file_path,
+            Some(niffler::compression::Format::No),
+            niffler::Level::One,
+        )
+        .unwrap();
+
+        assert_eq!(read_count, 1);
+        assert!(subdir.exists());
     }
 }
