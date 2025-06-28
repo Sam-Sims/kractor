@@ -215,4 +215,4 @@ This will output a json report that to stdout upon programme completion.
 
 ## Version
 
-- 1.0.0
+- 1.0.1
