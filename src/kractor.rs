@@ -60,7 +60,7 @@ impl Kractor {
             &self.args.report,
             self.args.children,
             self.args.parents,
-            self.args.taxid.clone(),
+            &self.args.taxid,
         )?;
         debug!("Taxon IDs identified: {:?}", self.taxon_ids);
         Ok(())
@@ -144,7 +144,7 @@ impl Kractor {
         if let Some(summary) = &self.summary {
             if self.args.json {
                 let json = serde_json::to_string_pretty(summary)?;
-                println!("{}", json);
+                println!("{json}");
             }
         }
         Ok(())

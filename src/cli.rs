@@ -63,7 +63,7 @@ fn validate_compression(s: &str) -> Result<niffler::compression::Format, String>
         "gz" => Ok(niffler::compression::Format::Gzip),
         "bz2" => Ok(niffler::compression::Format::Bzip),
         "none" => Ok(niffler::compression::Format::No),
-        _ => Err(format!("Unknown compression type: {}", s)),
+        _ => Err(format!("Unknown compression type: {s}")),
     }
 }
 
@@ -79,8 +79,7 @@ fn validate_compression_level(s: &str) -> Result<niffler::Level, String> {
         Ok(8) => Ok(niffler::Level::Eight),
         Ok(9) => Ok(niffler::Level::Nine),
         _ => Err(format!(
-            "Unknown compression level: {} Try a value between 1-9",
-            s
+            "Unknown compression level: {s} Try a value between 1-9"
         )),
     }
 }
