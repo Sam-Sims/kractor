@@ -83,10 +83,10 @@ pub fn write_output_fastq(
     debug!("Creating output file: {:?}", out_file);
 
     fs::create_dir_all(out_file.parent().unwrap())
-        .wrap_err_with(|| format!("Failed to create output directory: {:?}", out_file))?;
+        .wrap_err_with(|| format!("Failed to create output directory: {out_file:?}"))?;
 
     let out_file = fs::File::create(out_file)
-        .wrap_err_with(|| format!("Failed to create output file: {:?}", out_file))?;
+        .wrap_err_with(|| format!("Failed to create output file: {out_file:?}"))?;
 
     let file_handle = Box::new(io::BufWriter::new(out_file));
     let writer = niffler::get_writer(file_handle, compression_type, compression_level)
