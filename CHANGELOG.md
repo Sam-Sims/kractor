@@ -1,52 +1,86 @@
-## Changelog
+# Changelog
 
-### 1.0.0
+All notable changes to this project will be documented in this file.
 
-- better error handling with color-eyre #16
-- panics are now handled properly #16
-- keep fastq parsing in bytes, and not converting to String #17
-- optimise functions to take &Str instead of String #21
-- fix the root node being added to the tree twice #22
-- moved to crossbeam scoped channels and tidied up threading code
-- refactored json output and removed need for lazy_static
-- reads in and accurate number of reads out included in json report #15
-- added tests to most functions
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-### 0.4.0
+## [1.0.1] - 2025-06-28
 
-- Json report including in stdout upon successful completion (can be disabled with --no-json)
-- Renamed
+### Fixed
+- Create subdirectories specified in output path if they don't exist (#24)
+- Add output validation to prevent overwriting existing files (#25)
 
-### 0.3.0
+## [1.0.0] - 2025-04-16
 
+### Added
+- Better error handling with color-eyre (#16)
+- Proper panic handling (#16)
+- Tests for most functions
+- JSON report with accurate read count information (#15)
+
+### Changed
+- Keep fastq parsing in bytes instead of converting to String (#17)
+- Optimized functions to take `&str` instead of `String` (#21)
+- Migrated to crossbeam scoped channels and refactored threading code
+- Refactored JSON output and removed lazy_static dependency
+
+### Fixed
+- Root node no longer added to tree twice (#22)
+
+## [0.4.0] - 2023-10-06
+
+### Added
+- JSON report included in stdout upon successful completion (can be disabled with `--no-json`)
+
+### Changed
+- Project renamed
+
+## [0.3.0] - 2023-09-22
+
+### Added
 - Support for paired-end files
-- Major under the hood changes to use Noodles for fastq parsing, and Niffler to handle compression (RIP my own code)
-- Output a fasta file with `--output-fasta`
-- Streamline arguments related to compression types/level
-- Improved logging
+- Output FASTA file with `--output-fasta` option
 
-### 0.2.3
+### Changed
+- Major refactor to use Noodles for fastq parsing
+- Switched to Niffler for compression handling
+- Streamlined arguments related to compression types/level
 
-- Code optimisations
+### Improved
+- Logging functionality
 
-### 0.2.2
+## [0.2.3] - 2023-09-02
 
-- Increased verbosity of outputs to user
-- `--no-compress` flag to output a standard, plaintext fastq file
-- `--exclude` to exclude specified reads. Works with `--children` and `--parents`
-- Docstrings under the hood
+### Changed
+- Code optimizations
 
-### 0.2.1
+## [0.2.2]
 
-- Fixes to reduce memory usage
+### Added
+- `--no-compress` flag to output standard plaintext fastq files
+- `--exclude` option to exclude specified reads (works with `--children` and `--parents`)
+- Internal documentation (docstrings)
 
-### 0.2.0
+### Improved
+- Increased verbosity of user outputs
 
-- Detect and handle `gz` files or plain files
-- `--compression` arg to select compression type
-- `zlib-ng` to speed up gzip handling
-- `--children` and `--parents` to save children and parents based on kraken report
+## [0.2.1]
 
-### 0.1.0
+### Fixed
+- Reduced memory usage
 
-- First release
+## [0.2.0]
+
+### Added
+- Automatic detection and handling of gz and plain files
+- `--compression` argument to select compression type
+- `--children` and `--parents` options to save children and parents based on kraken report
+
+### Changed
+- Integrated zlib-ng for faster gzip handling
+
+## [0.1.0]
+
+### Added
+- Initial release
