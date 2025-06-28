@@ -1,5 +1,6 @@
 use crate::extract::{process_paired_end, process_single_end};
 use crate::{extract, parsers, Cli};
+use color_eyre::eyre::ensure;
 use color_eyre::Result;
 use fxhash::FxHashSet;
 use log::{debug, info};
@@ -41,6 +42,17 @@ impl Kractor {
             reads_to_save: FxHashSet::default(),
             summary: None,
         }
+    }
+
+    fn validate_outputs(&self) -> Result<()> {
+        for out_file in &self.args.output {
+            ensure!(
+                !out_file.exists(),
+                "Output file already exists: {:?}",
+                out_file
+            );
+        }
+        Ok(())
     }
 
     fn collect_taxons(&mut self) -> Result<()> {
@@ -143,6 +155,7 @@ impl Kractor {
             "Starting kractor at {}",
             chrono::Local::now().format("%H:%M:%S")
         );
+        self.validate_outputs()?;
         self.collect_taxons()?;
         info!("{} taxons identified to save", self.taxon_ids.len());
         info!("Processing Kraken2 output file");
@@ -152,5 +165,62 @@ impl Kractor {
         info!("Complete at {}", chrono::Local::now().format("%H:%M:%S"));
         self.output_summary()?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    fn test_output_doesnt_exist() {
+        let temp_dir = tempdir().unwrap();
+        let output_file = temp_dir.path().join("output.fastq");
+        let input_files = vec![PathBuf::from("input1.fastq"), PathBuf::from("input2.fastq")];
+        let args = Cli {
+            input: input_files,
+            output: vec![output_file],
+            kraken: PathBuf::from("kraken_output.txt"),
+            report: None,
+            taxid: vec![1, 2, 3],
+            output_type: None,
+            compression_level: niffler::Level::One,
+            parents: false,
+            children: false,
+            exclude: false,
+            output_fasta: false,
+            json: false,
+            verbose: false,
+        };
+        let kractor = Kractor::new(args);
+        assert!(kractor.validate_outputs().is_ok());
+    }
+
+    #[test]
+    fn test_output_exists() {
+        let temp_dir = tempdir().unwrap();
+        let output_file = temp_dir.path().join("output.fastq");
+        std::fs::File::create(&output_file).unwrap();
+        let input_files = vec![PathBuf::from("input.fastq")];
+        let args = Cli {
+            input: input_files,
+            output: vec![output_file],
+            kraken: PathBuf::from("kraken_output.txt"),
+            report: None,
+            taxid: vec![1, 2, 3],
+            output_type: None,
+            compression_level: niffler::Level::One,
+            parents: false,
+            children: false,
+            exclude: false,
+            output_fasta: false,
+            json: false,
+            verbose: false,
+        };
+        let kractor = Kractor::new(args);
+        assert!(kractor.validate_outputs().is_err());
     }
 }
