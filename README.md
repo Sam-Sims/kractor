@@ -4,6 +4,7 @@
 ![](https://anaconda.org/bioconda/kractor/badges/version.svg)
 [![test](https://github.com/Sam-Sims/kractor/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/Sam-Sims/kractor/actions/workflows/test.yaml)
 [![check](https://github.com/Sam-Sims/kractor/actions/workflows/check.yaml/badge.svg?branch=main)](https://github.com/Sam-Sims/kractor/actions/workflows/check.yaml)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15761838.svg)](https://doi.org/10.5281/zenodo.15761838)
 
 # kractor
 
@@ -89,24 +90,75 @@ All executables will be in the directory Kractor/target/release.
 
 ## Usage
 
-![Alt text](screenshot.png)
+```bash
+Extract reads from a FASTQ file based on taxonomic classification via Kraken2.
 
-### Basic Usage:
+Usage: kractor [OPTIONS] --input [<INPUT>...] --output [<OUTPUT>...] --kraken <KRAKEN> --taxid <TAXID>...
+
+Options:
+  -i, --input [<INPUT>...]              Input file path(s). Accepts up to 2 files (for paired-end reads)
+  -o, --output [<OUTPUT>...]            Output file path(s). Accepts up to 2 files (for paired-end reads)
+  -k, --kraken <KRAKEN>                 Kraken2 stdout file path
+  -r, --report <REPORT>                 Kraken2 report file path (Optional). Required when using --parents or --children
+  -t, --taxid <TAXID>...                Taxonomic IDs to extract reads for. Can specify multiple
+  -O, --compression-type <OUTPUT_TYPE>  Compression format for output files. Overides the inferred format
+  -l, --level <COMPRESSION_LEVEL>       Compression level [default: 2]
+      --parents                         Include all parent taxon IDs in the output
+      --children                        Include all child taxon IDs in the output
+      --exclude                         Exclude specified taxon IDs from the output
+      --output-fasta                    Output results in FASTA format
+      --json-report                     Enable a JSON summary output written to stdout
+  -v                                    Enable verbose output
+  -h, --help                            Print help
+  -V, --version                         Print version
+  ```
+
+### Examples:
 
 ```bash
-kractor -k <kraken_output> -i <fastq_file> -t <taxonomic_id> -o <output_file> --json-report > kractor_report.json
+# Extract reads classified as E. coli from single end reads
+kractor -i sample.fastq -o extracted.fastq -k kraken_output.txt -t 562
+
+# Extract from paired end reads
+kractor -i sample_R1.fastq -i sample_R2.fastq -o extracted_R1.fastq -o extracted_R2.fastq -k kraken_output.txt -t 562
+
+# Extract multiple taxids (Bacillaceae and Listeriaceae)
+kractor -i sample.fastq -o extracted.fastq -k kraken_output.txt -t 186817 186820
+
+# Extract all children of Enterobacteriaceae family (requires kraken report)
+kractor -i sample.fastq -o extracted.fastq -k kraken_output.txt -r kraken_report.txt -t 543 --children
+
+# Extract everything EXCEPT viral reads (using --exclude)
+kractor -i sample.fastq -o extracted.fastq -k kraken_output.txt -t 10239 --exclude
+
+# Output FASTA format instead of FASTQ
+kractor -i sample.fastq -o extracted.fasta -k kraken_output.txt -t 562 --output-fasta
 ```
 
-Or, if you have paired-end illumina reads:
-
-```bash
-kractor -k <kraken_output> -i <R1_fastq_file> -i <R2_fastq_file> -t <taxonomic_id> -o <R1_output_file> -o <R2_output_file>
-```
-
-If you want to extract all children of a taxon:
-
-```bash
-kractor -k <kraken_output> -r <kraken_report> -i <fastq_file> -t <taxonomic_id> --children -o <output_file>
+### Summary statistics
+Use `--json-report` to get summary statistics (output to stdout on completion)
+```json
+{
+  "taxon_count": 1,
+  "taxon_ids": [
+    1
+  ],
+  "reads_in": {
+    "Paired": {
+      "total": 107053222,
+      "read1": 53526611,
+      "read2": 53526611
+    }
+  },
+  "reads_out": {
+    "Paired": {
+      "total": 185410,
+      "read1": 92705,
+      "read2": 92705
+    }
+  },
+  "input_format": "paired"
+}
 ```
 
 ### Arguments:
@@ -216,3 +268,9 @@ This will output a json report that to stdout upon programme completion.
 ## Version
 
 - 1.0.1
+
+## Citation 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15761838.svg)](https://doi.org/10.5281/zenodo.15761838)
+```
+Sam Sims. (2025). Sam-Sims/kractor: kractor-1.0.1 (kractor-1.0.1). Zenodo. https://doi.org/10.5281/zenodo.15761838
+```
