@@ -1,5 +1,5 @@
 use color_eyre::{eyre::bail, eyre::eyre, eyre::Context, Result};
-use fxhash::FxHashSet;
+use fxhash::{FxHashMap, FxHashSet};
 use log::debug;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -86,8 +86,9 @@ pub fn process_kraken_output(
     kraken_path: &PathBuf,
     exclude: bool,
     taxon_ids_to_save: &[i32],
-) -> Result<FxHashSet<Vec<u8>>> {
+) -> Result<(FxHashSet<Vec<u8>>, FxHashMap<i32, usize>)> {
     let taxon_ids_to_save: HashSet<i32> = taxon_ids_to_save.iter().cloned().collect();
+    let mut reads_per_taxon: FxHashMap<i32, usize> = Default::default();
     let mut reads_to_save = FxHashSet::default();
     let kraken_file = fs::File::open(kraken_path)
         .wrap_err_with(|| format!("Failed to open kraken output file: {:?}", kraken_path))?;
@@ -100,9 +101,10 @@ pub fn process_kraken_output(
             || (!exclude && taxon_ids_to_save.contains(&record.taxon_id))
         {
             reads_to_save.insert(record.read_id);
+            *reads_per_taxon.entry(record.taxon_id).or_insert(0) += 1;
         }
     }
-    Ok(reads_to_save)
+    Ok((reads_to_save, reads_per_taxon))
 }
 
 fn process_kraken_report_line(kraken_report: &str) -> Result<KrakenReportRecord> {
@@ -361,12 +363,13 @@ mod tests {
         let mut file = File::create(&file_path).unwrap();
         file.write_all(test_data.as_bytes()).unwrap();
         let taxon_ids_to_save = vec![1337];
-        let result = process_kraken_output(&file_path, false, &taxon_ids_to_save).unwrap();
-        assert_eq!(result.len(), 2);
-        assert!(result.contains(b"read_1".as_slice()));
-        assert!(result.contains(b"read_3".as_slice()));
-        assert!(!result.contains(b"read_2".as_slice()));
-        assert!(!result.contains(b"read_4".as_slice()));
+        let (reads_to_save, taxon_counts) =
+            process_kraken_output(&file_path, false, &taxon_ids_to_save).unwrap();
+        assert_eq!(reads_to_save.len(), 2);
+        assert!(reads_to_save.contains(b"read_1".as_slice()));
+        assert!(reads_to_save.contains(b"read_3".as_slice()));
+        assert!(!reads_to_save.contains(b"read_2".as_slice()));
+        assert!(!reads_to_save.contains(b"read_4".as_slice()));
     }
 
     #[test]
@@ -381,12 +384,56 @@ mod tests {
         let mut file = File::create(&file_path).unwrap();
         file.write_all(test_data.as_bytes()).unwrap();
         let taxon_ids_to_save = vec![1337];
-        let result = process_kraken_output(&file_path, true, &taxon_ids_to_save).unwrap();
-        assert_eq!(result.len(), 2);
-        assert!(!result.contains(b"read_1".as_slice()));
-        assert!(!result.contains(b"read_3".as_slice()));
-        assert!(result.contains(b"read_2".as_slice()));
-        assert!(result.contains(b"read_4".as_slice()));
+        let (reads_to_save, taxon_counts) =
+            process_kraken_output(&file_path, true, &taxon_ids_to_save).unwrap();
+        assert_eq!(reads_to_save.len(), 2);
+        assert!(!reads_to_save.contains(b"read_1".as_slice()));
+        assert!(!reads_to_save.contains(b"read_3".as_slice()));
+        assert!(reads_to_save.contains(b"read_2".as_slice()));
+        assert!(reads_to_save.contains(b"read_4".as_slice()));
+    }
+
+    #[test]
+    fn test_taxon_counts_include_mode() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("kraken_output.txt");
+        let test_data = "\
+        C\tread_1\t1337\t150\t0:1 1:10
+        C\tread_2\t2\t150\t0:1 1:10
+        C\tread_3\t1\t150\t0:1 1:10
+        C\tread_4\t1337\t150\t0:1 1:10";
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(test_data.as_bytes()).unwrap();
+        let taxon_ids_to_save = vec![1337, 2];
+        let (_, taxon_counts) =
+            process_kraken_output(&file_path, false, &taxon_ids_to_save).unwrap();
+        assert_eq!(taxon_counts.len(), 2);
+        assert_eq!(*taxon_counts.get(&1337).unwrap(), 2);
+        assert_eq!(*taxon_counts.get(&2).unwrap(), 1);
+        assert!(!taxon_counts.contains_key(&1));
+    }
+
+    #[test]
+    fn test_taxon_counts_exclude_mode() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("kraken_output.txt");
+        let test_data = "\
+        C\tread_1\t1337\t150\t0:1 1:10
+        C\tread_2\t2\t150\t0:1 1:10
+        C\tread_3\t1\t150\t0:1 1:10
+        C\tread_4\t1\t150\t0:1 1:10
+        C\tread_5\t5\t150\t0:1 1:10
+        C\tread_6\t1337\t150\t0:1 1:10";
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(test_data.as_bytes()).unwrap();
+        let taxon_ids_to_save = vec![1337, 2];
+        let (_, taxon_counts) =
+            process_kraken_output(&file_path, true, &taxon_ids_to_save).unwrap();
+        assert_eq!(taxon_counts.len(), 2);
+        assert_eq!(*taxon_counts.get(&1).unwrap(), 2);
+        assert_eq!(*taxon_counts.get(&5).unwrap(), 1);
+        assert!(!taxon_counts.contains_key(&1337));
+        assert!(!taxon_counts.contains_key(&2));
     }
 
     #[test]
@@ -398,10 +445,10 @@ mod tests {
         C\tread_2\t2\t150\t0:1 1:10";
         let mut file = File::create(&file_path).unwrap();
         file.write_all(test_data.as_bytes()).unwrap();
-        let result = process_kraken_output(&file_path, false, &[]).unwrap();
-        assert_eq!(result.len(), 0);
-        let result = process_kraken_output(&file_path, true, &[]).unwrap();
-        assert_eq!(result.len(), 2);
+        let (reads_to_save, taxon_counts) = process_kraken_output(&file_path, false, &[]).unwrap();
+        assert_eq!(reads_to_save.len(), 0);
+        let (reads_to_save, taxon_counts) = process_kraken_output(&file_path, true, &[]).unwrap();
+        assert_eq!(reads_to_save.len(), 2);
     }
 
     #[test]
