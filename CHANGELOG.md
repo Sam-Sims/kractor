@@ -8,9 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.0.0] - 2025-08-12
 
 ### Added
-- Added a reads extracted per taxon field to to summary report (#28)
-- Added a proportion extracted field to summary report (#28)
-- Added kractor version to summary report (#28)
+- Added a `reads_extracted_per_taxon` field to to summary report (#28)
+- Added a `proportion_extracted` field to summary report (#28)
+- Added the version to summary report (#28)
 - Added an output format (`fasta` or `fastq`) field to the summary report (#28)
 - Added a `--verbose` flag (in addition to the existing `-v`)
 
