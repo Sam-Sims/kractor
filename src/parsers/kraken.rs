@@ -69,7 +69,7 @@ fn process_kraken_output_line(kraken_output: &str) -> Result<KrakenRecord> {
         let taxon_id = taxon_id
             .trim()
             .parse::<i32>()
-            .wrap_err_with(|| format!("Error parsing taxon ID: '{}'", taxon_id))?;
+            .wrap_err_with(|| format!("Error parsing taxon ID: '{taxon_id}'"))?;
         Ok(KrakenRecord {
             is_classified,
             read_id: read_id.as_bytes().to_vec(),
@@ -87,11 +87,11 @@ pub fn process_kraken_output(
     exclude: bool,
     taxon_ids_to_save: &[i32],
 ) -> Result<(FxHashSet<Vec<u8>>, FxHashMap<i32, usize>)> {
-    let taxon_ids_to_save: HashSet<i32> = taxon_ids_to_save.iter().cloned().collect();
-    let mut reads_per_taxon: FxHashMap<i32, usize> = Default::default();
+    let taxon_ids_to_save: HashSet<i32> = taxon_ids_to_save.iter().copied().collect();
+    let mut reads_per_taxon: FxHashMap<i32, usize> = FxHashMap::default();
     let mut reads_to_save = FxHashSet::default();
     let kraken_file = fs::File::open(kraken_path)
-        .wrap_err_with(|| format!("Failed to open kraken output file: {:?}", kraken_path))?;
+        .wrap_err_with(|| format!("Failed to open kraken output file: {}", kraken_path.display()))?;
     let reader = BufReader::new(kraken_file);
 
     for line_result in reader.lines() {
@@ -132,29 +132,26 @@ fn process_kraken_report_line(kraken_report: &str) -> Result<KrakenReportRecord>
         let percent = percent_field
             .trim()
             .parse::<f32>()
-            .wrap_err_with(|| format!("Error parsing percent value: '{}'", percent_field))?;
+            .wrap_err_with(|| format!("Error parsing percent value: '{percent_field}'"))?;
 
         let fragments_clade_rooted = fragments_clade_rooted_field
             .trim()
             .parse::<i32>()
             .wrap_err_with(|| {
-                format!(
-                    "Error parsing fragments clade rooted: '{}'",
-                    fragments_clade_rooted_field
-                )
+                format!("Error parsing fragments clade rooted: '{fragments_clade_rooted_field}'")
             })?;
 
         let fragments_taxon = fragments_taxon_field
             .trim()
             .parse::<i32>()
             .wrap_err_with(|| {
-                format!("Error parsing fragments taxon: '{}'", fragments_taxon_field)
+                format!("Error parsing fragments taxon: '{fragments_taxon_field}'")
             })?;
 
         let taxon_id = taxon_id_field
             .trim()
             .parse::<i32>()
-            .wrap_err_with(|| format!("Error parsing taxon ID: '{}'", taxon_id_field))?;
+            .wrap_err_with(|| format!("Error parsing taxon ID: '{taxon_id_field}'"))?;
 
         let level = name_field.chars().take_while(|&c| c == ' ').count() / 2;
 
@@ -183,7 +180,7 @@ pub fn build_tree_from_kraken_report(
     let mut taxon_map = HashMap::new();
 
     let report_file = fs::File::open(report_path)
-        .wrap_err_with(|| format!("Failed to open kraken report file: {:?}", report_path))?;
+        .wrap_err_with(|| format!("Failed to open kraken report file: {}", report_path.display()))?;
 
     let reader = BufReader::new(report_file);
     let mut prev_index = None;
@@ -204,11 +201,10 @@ pub fn build_tree_from_kraken_report(
         }
         // if the current level is not the same as the previous level + 1, then we are not at the correct parent, and need to move up the tree
         while let Some(parent_index) = prev_index {
-            if record.level != nodes[parent_index].level_num + 1 {
-                prev_index = nodes[parent_index].parent;
-            } else {
+            if record.level == nodes[parent_index].level_num + 1 {
                 break;
             }
+            prev_index = nodes[parent_index].parent;
         }
         // once we have the correct parent, we can add the current node to the tree
         let curr_node = Tree::new(record.taxon_id, record.level, prev_index);

@@ -21,16 +21,16 @@ pub fn process_single_end(
         let reader = scope.spawn(|_| {
             let result = parse_fastq(&input[0], reads_to_save, &tx);
             drop(tx);
-            result.wrap_err_with(|| format!("Failed to parse input file: {:?}", input[0]))
+            result.wrap_err_with(|| format!("Failed to parse input file: {}", input[0].display()))
         });
 
         let writer = scope.spawn(|_| {
-            if !fasta {
-                write_output_fastq(rx, &output[0], compression_type, compression_level)
-                    .wrap_err_with(|| format!("Failed to write output file: {:?}", output[0]))
-            } else {
+            if fasta {
                 write_output_fasta(rx, &output[0])
-                    .wrap_err_with(|| format!("Failed to write output file: {:?}", output[0]))
+                    .wrap_err_with(|| format!("Failed to write output file: {}", output[0].display()))
+            } else {
+                write_output_fastq(rx, &output[0], compression_type, compression_level)
+                    .wrap_err_with(|| format!("Failed to write output file: {}", output[0].display()))
             }
         });
 
@@ -60,50 +60,50 @@ pub fn process_paired_end(
         let reader1 = scope.spawn(|_| {
             let result = parse_fastq(&input[0], reads_to_save, &tx1);
             drop(tx1);
-            result.wrap_err_with(|| format!("Failed to parse first input file: {:?}", input[0]))
+            result.wrap_err_with(|| format!("Failed to parse first input file: {}", input[0].display()))
         });
 
         let reader2 = scope.spawn(|_| {
             let result = parse_fastq(&input[1], reads_to_save, &tx2);
             drop(tx2);
-            result.wrap_err_with(|| format!("Failed to parse second input file: {:?}", input[1]))
+            result.wrap_err_with(|| format!("Failed to parse second input file: {}", input[1].display()))
         });
 
         let writer1 = scope.spawn(|_| {
-            if !fasta {
+            if fasta {
+                write_output_fasta(rx1, &output[0]).wrap_err_with(|| {
+                    format!(
+                        "Failed to write FASTA output to first file: {}",
+                        output[0].display()
+                    )
+                })
+            } else {
                 write_output_fastq(rx1, &output[0], compression_type, compression_level)
                     .wrap_err_with(|| {
                         format!(
-                            "Failed to write FASTQ output to first file: {:?}",
-                            output[0]
+                            "Failed to write FASTQ output to first file: {}",
+                            output[0].display()
                         )
                     })
-            } else {
-                write_output_fasta(rx1, &output[0]).wrap_err_with(|| {
-                    format!(
-                        "Failed to write FASTA output to first file: {:?}",
-                        output[0]
-                    )
-                })
             }
         });
 
         let writer2 = scope.spawn(|_| {
-            if !fasta {
+            if fasta {
+                write_output_fasta(rx2, &output[1]).wrap_err_with(|| {
+                    format!(
+                        "Failed to write FASTA output to second file: {}",
+                        output[1].display()
+                    )
+                })
+            } else {
                 write_output_fastq(rx2, &output[1], compression_type, compression_level)
                     .wrap_err_with(|| {
                         format!(
-                            "Failed to write FASTQ output to second file: {:?}",
-                            output[1]
+                            "Failed to write FASTQ output to second file: {}",
+                            output[1].display()
                         )
                     })
-            } else {
-                write_output_fasta(rx2, &output[1]).wrap_err_with(|| {
-                    format!(
-                        "Failed to write FASTA output to second file: {:?}",
-                        output[1]
-                    )
-                })
             }
         });
 
@@ -131,7 +131,7 @@ pub fn collect_taxons_to_save(
     report: &Option<PathBuf>,
     children: bool,
     parents: bool,
-    taxids: Vec<i32>,
+    taxids: &[i32],
 ) -> Result<Vec<i32>> {
     let mut taxon_ids_to_save = Vec::new();
 
@@ -141,40 +141,37 @@ pub fn collect_taxons_to_save(
     }
 
     if let Some(report_path) = report {
-        let (nodes, taxon_map) = build_tree_from_kraken_report(&taxids, report_path)
+        let (nodes, taxon_map) = build_tree_from_kraken_report(taxids, report_path)
             .wrap_err("Failed to build tree from Kraken report")?;
 
         if children {
             debug!("Extracting children");
             let mut children = Vec::new();
-            for taxid in &taxids {
+            for taxid in taxids {
                 if let Some(&node_index) = taxon_map.get(taxid) {
                     extract_children(&nodes, node_index, &mut children).wrap_err_with(|| {
-                        format!("Failed to extract children for taxon ID {}", taxid)
+                        format!("Failed to extract children for taxon ID {taxid}")
                     })?;
                 } else {
                     return Err(eyre!("Taxon ID {} not found in taxonomy map", taxid));
                 }
             }
-            taxon_ids_to_save.extend(&children);
+            taxon_ids_to_save.extend(children);
         } else if parents {
             debug!("Extracting parents");
-            for taxid in &taxids {
+            for taxid in taxids {
                 taxon_ids_to_save.extend(
                     extract_parents(&taxon_map, &nodes, *taxid).wrap_err_with(|| {
-                        format!("Failed to extract parents for taxon ID {}", taxid)
+                        format!("Failed to extract parents for taxon ID {taxid}")
                     })?,
                 );
             }
         } else {
-            taxon_ids_to_save.extend(&taxids);
+            taxon_ids_to_save.extend(taxids);
         }
     } else {
-        debug!(
-            "No kraken report provided - extracting reads for taxon ID {:?} only",
-            taxids
-        );
-        taxon_ids_to_save.extend(&taxids);
+        debug!("No kraken report provided - extracting reads for taxon ID {taxids:?} only");
+        taxon_ids_to_save.extend(taxids);
     }
 
     taxon_ids_to_save.sort_unstable();
@@ -370,16 +367,16 @@ mod tests {
 
     #[test]
     fn test_error_when_no_report_and_parents_or_children() {
-        let result = collect_taxons_to_save(&None, true, false, vec![1]);
+        let result = collect_taxons_to_save(&None, true, false, &[1]);
         assert!(result.is_err());
-        let result = collect_taxons_to_save(&None, false, true, vec![1]);
+        let result = collect_taxons_to_save(&None, false, true, &[1]);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_no_report() {
         let taxids = vec![123, 456, 789];
-        let saved_taxons = collect_taxons_to_save(&None, false, false, taxids.clone()).unwrap();
+        let saved_taxons = collect_taxons_to_save(&None, false, false, &taxids).unwrap();
 
         assert_eq!(saved_taxons, taxids);
     }
@@ -390,7 +387,7 @@ mod tests {
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![1385, 1386, 91061];
         let saved_taxons =
-            collect_taxons_to_save(&Some(report_path), false, false, taxids.clone()).unwrap();
+            collect_taxons_to_save(&Some(report_path), false, false, &taxids).unwrap();
 
         assert_eq!(saved_taxons, taxids);
     }
@@ -400,7 +397,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![1239];
-        let saved_taxons = collect_taxons_to_save(&Some(report_path), true, false, taxids).unwrap();
+        let saved_taxons = collect_taxons_to_save(&Some(report_path), true, false, &taxids).unwrap();
 
         assert!(saved_taxons.contains(&1239));
         assert!(saved_taxons.contains(&91062));
@@ -412,7 +409,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![91061];
-        let saved_taxons = collect_taxons_to_save(&Some(report_path), false, true, taxids).unwrap();
+        let saved_taxons = collect_taxons_to_save(&Some(report_path), false, true, &taxids).unwrap();
 
         assert!(saved_taxons.contains(&91061));
         assert!(saved_taxons.contains(&1239));
@@ -426,7 +423,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![999];
-        let result = collect_taxons_to_save(&Some(report_path), true, false, taxids);
+        let result = collect_taxons_to_save(&Some(report_path), true, false, &taxids);
 
         assert!(result.is_err());
     }
@@ -434,14 +431,14 @@ mod tests {
     #[test]
     fn test_dedup_and_sort() {
         let taxids = vec![456, 123, 456, 789, 123];
-        let saved_taxons = collect_taxons_to_save(&None, false, false, taxids).unwrap();
+        let saved_taxons = collect_taxons_to_save(&None, false, false, &taxids).unwrap();
 
         assert_eq!(saved_taxons, vec![123, 456, 789]);
     }
 
     #[test]
     fn test_empty_result() {
-        let result = collect_taxons_to_save(&None, false, false, vec![]);
+        let result = collect_taxons_to_save(&None, false, false, &[]);
 
         assert!(result.is_err());
     }
