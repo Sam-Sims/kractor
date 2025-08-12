@@ -10,27 +10,25 @@
 
 **kra**ken extr**actor**
 
-Kractor extracts sequencing reads based on taxonomic classifications obtained
-via [Kraken2](https://github.com/DerrickWood/kraken2). It consumes paired or unpaired `fastq[.gz/.bz]` files as input
-alongisde a Kraken2 standard output. It can optionally consume a Kraken2 report to extract all taxonomic parents and
-children of a given taxid. Fast and multithreaded by default, it outputs `fast[q/a]` files, that can optionally be
-compressed. Memory usage
-is minimal, averaging ~4.5MB while processing a 17GB fastq file.
+Kractor extracts sequencing reads from fastq `[.gz/.bz2]` files using taxonomic classifications obtained via Kraken2. 
+It supports single or paired-end reads, can optionally include taxonomic parents or children, and uses minimal memory (~4.5 MB for a 17 GB FASTQ file).
 
-The end result is a `fast[q/a]` file containing all reads classified as the specified taxon.
+The end result is a `fast[q/a]` file containing all reads classified as the specified taxon(s).
 
-Kractor significantly enhances processing speed compared to KrakenTools for both paired and unpaired reads. Paired reads
-are processed approximately 21x quicker for compressed fastqs and 10x quicker for uncompressed. Unpaired reads are
-approximately 4x faster for both compressed and uncompressed inputs.
+Kractor significantly enhances processing speed compared to KrakenTools for both paired and unpaired reads.
+
+*Performance vs KrakenTools:*
+- Paired compressed FASTQ: ~21× faster 
+- Paired uncompressed FASTQ: ~10× faster 
+- Unpaired: ~4× faster (compressed or uncompressed)
 
 For additional details, refer to the [benchmarks](benchmarks/benchmarks.md)
 
 ## Motivation
 
-Inspired by [KrakenTools](https://github.com/jenniferlu717/KrakenTools).
+Provides similar functionality to the [KrakenTools](https://github.com/jenniferlu717/KrakenTools) `extract_kraken_reads` python script.
 
-The main motivation was to enchance speed when parsing, extracting, and writing a large volume of reads - and also to
-learn rust.
+However the main motivation was to enhance speed when processing multiple, large FASTQ files - and as a way to learn Rust.
 
 ## Installation
 
@@ -43,11 +41,8 @@ release.
 
 ![](https://anaconda.org/bioconda/kractor/badges/platforms.svg)
 
-
-With conda installed, and bioconda channel correctly setup:
-
 ```
-conda install kractor
+conda install -c bioconda kractor
 ```
 
 ### Docker:
@@ -96,21 +91,36 @@ Extract reads from a FASTQ file based on taxonomic classification via Kraken2.
 Usage: kractor [OPTIONS] --input [<INPUT>...] --output [<OUTPUT>...] --kraken <KRAKEN> --taxid <TAXID>...
 
 Options:
-  -i, --input [<INPUT>...]              Input file path(s). Accepts up to 2 files (for paired-end reads)
-  -o, --output [<OUTPUT>...]            Output file path(s). Accepts up to 2 files (for paired-end reads)
-  -k, --kraken <KRAKEN>                 Kraken2 stdout file path
-  -r, --report <REPORT>                 Kraken2 report file path (Optional). Required when using --parents or --children
-  -t, --taxid <TAXID>...                Taxonomic IDs to extract reads for. Can specify multiple
-  -O, --compression-type <OUTPUT_TYPE>  Compression format for output files. Overides the inferred format
-  -l, --level <COMPRESSION_LEVEL>       Compression level [default: 2]
-      --parents                         Include all parent taxon IDs in the output
-      --children                        Include all child taxon IDs in the output
-      --exclude                         Exclude specified taxon IDs from the output
-      --output-fasta                    Output results in FASTA format
-      --json-report                     Enable a JSON summary output written to stdout
-  -v                                    Enable verbose output
-  -h, --help                            Print help
-  -V, --version                         Print version
+  -i, --input [<INPUT>...]
+          Input file path(s). Accepts up to 2 files (for paired-end reads)
+  -o, --output [<OUTPUT>...]
+          Output file path(s). Accepts up to 2 files (for paired-end reads)
+  -k, --kraken <KRAKEN>
+          Kraken2 stdout file path
+  -r, --report <REPORT>
+          Kraken2 report file path
+  -t, --taxid <TAXID>...
+          One or more taxon IDs to extract reads for
+  -p, --parents
+          Include all parent taxon IDs in the output. Requires a Kraken2 report file
+  -c, --children
+          Include all child taxon IDs in the output. Requires a Kraken2 report file
+      --compression-format <OUTPUT_TYPE>
+          Compression format for output files (gz, bz2). Overides the inferred format
+      --compression-level <COMPRESSION_LEVEL>
+          Compression level (1-9) [default: 2]
+      --exclude
+          Exclude specified taxon IDs from the output
+      --output-fasta
+          Output results in FASTA format
+      --summary
+          Enable a JSON summary output written to stdout
+  -v, --verbose
+          Enable verbose output
+  -h, --help
+          Print help
+  -V, --version
+          Print version
   ```
 
 ### Examples:
@@ -139,25 +149,17 @@ kractor -i sample.fastq -o extracted.fasta -k kraken_output.txt -t 562 --output-
 Use `--json-report` to get summary statistics (output to stdout on completion)
 ```json
 {
-  "taxon_count": 1,
-  "taxon_ids": [
-    1
-  ],
-  "reads_in": {
-    "Paired": {
-      "total": 107053222,
-      "read1": 53526611,
-      "read2": 53526611
-    }
+  "total_taxon_count": 2,
+  "reads_extracted_per_taxon": {
+    "0": 745591,
+    "1": 1646
   },
-  "reads_out": {
-    "Paired": {
-      "total": 185410,
-      "read1": 92705,
-      "read2": 92705
-    }
-  },
-  "input_format": "paired"
+  "total_reads_in": 3491078,
+  "total_reads_out": 747237,
+  "proportion_extracted": 0.2140419091180432,
+  "input_format": "single",
+  "output_format": "fastq",
+  "kractor_version": "1.0.1"
 }
 ```
 
@@ -169,8 +171,8 @@ Use `--json-report` to get summary statistics (output to stdout on completion)
 
 `-i, --input`
 
-This option will specify the input files containing the reads you want to extract from. They can be compressed - (`gz`,
-`bz2`). Paired end reads can be specified by:
+Specifies one or two input FASTQ files to extract reads from. Files may be uncompressed or compressed (`gz`, `bz2`). 
+Paired end reads can be specified by:
 
 Using `--input` twice: `-i <R1_fastq_file> -i <R2_fastq_file>`
 
@@ -182,92 +184,83 @@ This means that bash wildcard expansion works: `-i *.fastq`
 
 `-o, --output`
 
-This option will specify the output files containing the extracted reads. The order of the output files is assumed to be
-the same as the input.
-
-By default the compression will be inferred from the output file extension for supported file types (`gz`, `bz`). If the
-output type cannot be inferred, plaintext will be output.
+Specifies the output file(s) for extracted reads, matching the order of the input files. 
+Compression type is inferred from the file extension (.gz, .bz2). If not recognised, output will be uncompressed.
 
 #### Kraken Output
 
 `-k, --kraken`
 
-This option will specify the path to the [Standard Kraken Output Format file](https://github.com/DerrickWood/kraken2/wiki/Manual#standard-kraken-output-format), containing taxonomic classification of read IDs.
+Path to the [Standard Kraken Output Format file](https://github.com/DerrickWood/kraken2/wiki/Manual#standard-kraken-output-format), containing taxonomic classification of read IDs.
 
 #### Taxid
 
 `-t, --taxid`
 
-This option will specify the taxon ID for reads you want to extract. 
+One or more taxonomic IDs to extract. 
 
-Multiple taxids can be specified:
-`-t 1 2 10`.
+For example: `-t 1 2 10`
 
-Each taxid will adhere to `--exclude` `--parents` and `--children`
+Each taxid is affected by `--exclude`, `--parents`, and `--children` if those options are used.
 
 ### Optional:
 
 #### Output type
 
-`-O, --output-type`
+`--compression-format`
 
-This option will manually set the compression mode used for the output file and will override the type inferred from the
-output path.
+Manually set output compression format, overriding what is inferred from file names. 
 
-Valid values are:
-
-- `gz` to output gz
-- `bz2` to output bz2
-- `none` to not apply compresison
+Valid values:
+- `gz` – gzip compression 
+- `bz2` – bzip2 compression 
+- `none` – no compression
 
 #### Compression level
 
-`-l, --level`
+`--compression-level`
 
-This option will set the compression level to use if compressing the output. Should be a value between 1-9 with 1 being
-the fastest but largest file size and 9 is for slowest, but best file size. By default this is set at 2 as it is a good
-trade off for speed/filesize.
+Set compression level (1–9). 
+- 1 = fastest, largest file 
+- 9 = slowest, smallest file 
+
+Default: 2 (balance of speed and size)
 
 #### Output fasta
 
 `--output-fasta`
 
-This option will output a fasta file, with read ids as headers.
+Output sequences in FASTA format instead of FASTQ.
 
 #### Kraken Report
 
 `-r, --report`
 
-This option specifies the path to the [Kraken2 report file](https://github.com/DerrickWood/kraken2/wiki/Manual#sample-report-output-format). If you want to use `--parents` or `--children`
-then is argument is required.
+Path to the [Kraken2 report file](https://github.com/DerrickWood/kraken2/wiki/Manual#sample-report-output-format). Required if using `--parents` or `--children`.
 
 #### Parents
 
 `--parents`
 
-This will extract reads classified at all taxons between the root and the specified `--taxid`.
+Include reads classified between the root and the specified `--taxid`. Requires `--report`.
 
 #### Children
 
 `--children`
 
-This will extract all the reads classified as decendents or subtaxa of `--taxid` (Including the taxid).
+Include reads classified at the given taxid and all its descendant taxa. Requires `--report`.
 
 #### Exclude
 
 `--exclude`
 
-This will output every read except those matching the taxid. Works with `--parents` and `--children`
+Extract all reads except those matching the given taxids. Can be combined with `--parents` or `--children`.
 
 #### JSON report
 
-`--json-report`
+`--summary`
 
-This will output a json report that to stdout upon programme completion.
-
-## Version
-
-- 1.0.1
+Write a JSON report to stdout after processing.
 
 ## Citation 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15761838.svg)](https://doi.org/10.5281/zenodo.15761838)
