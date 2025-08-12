@@ -159,7 +159,7 @@ Use `--json-report` to get summary statistics (output to stdout on completion)
   "proportion_extracted": 0.2140419091180432,
   "input_format": "single",
   "output_format": "fastq",
-  "kractor_version": "1.0.1"
+  "kractor_version": "2.0.0"
 }
 ```
 
@@ -177,8 +177,6 @@ Paired end reads can be specified by:
 Using `--input` twice: `-i <R1_fastq_file> -i <R2_fastq_file>`
 
 Using `--input` once but passing both files: `-i <R1_fastq_file> <R2_fastq_file>`
-
-This means that bash wildcard expansion works: `-i *.fastq`
 
 #### Output
 
