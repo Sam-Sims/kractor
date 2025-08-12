@@ -504,7 +504,7 @@ dependencies = [
 
 [[package]]
 name = "kractor"
-version = "1.0.1"
+version = "2.0.0"
 dependencies = [
  "bzip2",
  "chrono",
