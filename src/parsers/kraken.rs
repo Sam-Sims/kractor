@@ -82,6 +82,7 @@ fn process_kraken_output_line(kraken_output: &str) -> Result<KrakenRecord> {
     }
 }
 
+#[allow(clippy::type_complexity)]
 pub fn process_kraken_output(
     kraken_path: &PathBuf,
     exclude: bool,
