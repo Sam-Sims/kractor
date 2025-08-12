@@ -137,7 +137,7 @@ impl Kractor {
 
     fn output_summary(&self) -> Result<()> {
         if let Some(summary) = &self.summary {
-            if self.args.json {
+            if self.args.summary {
                 let json = serde_json::to_string_pretty(summary)?;
                 println!("{}", json);
             }
@@ -187,7 +187,7 @@ mod tests {
             children: false,
             exclude: false,
             output_fasta: false,
-            json: false,
+            summary: false,
             verbose: false,
         };
         let kractor = Kractor::new(args);
@@ -212,7 +212,7 @@ mod tests {
             children: false,
             exclude: false,
             output_fasta: false,
-            json: false,
+            summary: false,
             verbose: false,
         };
         let kractor = Kractor::new(args);

@@ -17,33 +17,28 @@ pub struct Cli {
     /// Kraken2 stdout file path.
     #[arg(short = 'k', long = "kraken", required = true)]
     pub kraken: PathBuf,
-    /// Kraken2 report file path (Optional). Required when using --parents or --children.
+    /// Kraken2 report file path.
     #[arg(short = 'r', long = "report", required_if_eq_any([("parents", "true"), ("children", "true")]))]
     pub report: Option<PathBuf>,
-    /// Taxonomic IDs to extract reads for. Use multiple times for multiple IDs.
+    /// One or more taxon IDs to extract reads for.
     #[arg(short = 't', long = "taxid", required = true, num_args(1..))]
     pub taxid: Vec<i32>,
-    /// Compression format for output files. Overides the inferred format.
-    #[arg(
-        short = 'O',
-        long = "compression-type",
-        value_parser(validate_compression)
-    )]
+    /// Include all parent taxon IDs in the output. Requires a Kraken2 report file.
+    #[arg(short = 'p', long, action)]
+    pub parents: bool,
+    /// Include all child taxon IDs in the output. Requires a Kraken2 report file.
+    #[arg(short = 'c', long, action)]
+    pub children: bool,
+    /// Compression format for output files (gz, bz2). Overides the inferred format.
+    #[arg(long = "compression-format", value_parser(validate_compression))]
     pub output_type: Option<niffler::compression::Format>,
-    /// Compression level
+    /// Compression level (1-9).
     #[arg(
-        short = 'l',
-        long = "level",
+        long = "compression-level",
         default_value = "2",
         value_parser(validate_compression_level)
     )]
     pub compression_level: niffler::Level,
-    /// Include all parent taxon IDs in the output.
-    #[arg(long, action)]
-    pub parents: bool,
-    /// Include all child taxon IDs in the output.
-    #[arg(long, action)]
-    pub children: bool,
     /// Exclude specified taxon IDs from the output.
     #[arg(long)]
     pub exclude: bool,
@@ -51,10 +46,10 @@ pub struct Cli {
     #[arg(long, action)]
     pub output_fasta: bool,
     /// Enable a JSON summary output written to stdout.
-    #[arg(long = "json-report")]
-    pub json: bool,
+    #[arg(long = "summary")]
+    pub summary: bool,
     /// Enable verbose output.
-    #[arg(short)]
+    #[arg(short, long)]
     pub verbose: bool,
 }
 
@@ -63,7 +58,7 @@ fn validate_compression(s: &str) -> Result<niffler::compression::Format, String>
         "gz" => Ok(niffler::compression::Format::Gzip),
         "bz2" => Ok(niffler::compression::Format::Bzip),
         "none" => Ok(niffler::compression::Format::No),
-        _ => Err(format!("Unknown compression type: {}", s)),
+        _ => Err(format!("Unknown compression type: {s}")),
     }
 }
 
@@ -79,8 +74,7 @@ fn validate_compression_level(s: &str) -> Result<niffler::Level, String> {
         Ok(8) => Ok(niffler::Level::Eight),
         Ok(9) => Ok(niffler::Level::Nine),
         _ => Err(format!(
-            "Unknown compression level: {} Try a value between 1-9",
-            s
+            "Unknown compression level: {s} Try a value between 1-9"
         )),
     }
 }
