@@ -180,7 +180,6 @@ pub fn collect_taxons_to_save(
     taxon_ids_to_save.sort_unstable();
     taxon_ids_to_save.dedup();
 
-    debug!("Taxon IDs identified: {:?}", taxon_ids_to_save);
     if taxon_ids_to_save.is_empty() {
         bail!("No taxon IDs were identified for extraction");
     }
