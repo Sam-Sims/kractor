@@ -90,8 +90,12 @@ pub fn process_kraken_output(
     let taxon_ids_to_save: HashSet<i32> = taxon_ids_to_save.iter().copied().collect();
     let mut reads_per_taxon: FxHashMap<i32, usize> = FxHashMap::default();
     let mut reads_to_save = FxHashSet::default();
-    let kraken_file = fs::File::open(kraken_path)
-        .wrap_err_with(|| format!("Failed to open kraken output file: {}", kraken_path.display()))?;
+    let kraken_file = fs::File::open(kraken_path).wrap_err_with(|| {
+        format!(
+            "Failed to open kraken output file: {}",
+            kraken_path.display()
+        )
+    })?;
     let reader = BufReader::new(kraken_file);
 
     for line_result in reader.lines() {
@@ -179,8 +183,12 @@ pub fn build_tree_from_kraken_report(
     // taxonid -> index in the nodes vector
     let mut taxon_map = HashMap::new();
 
-    let report_file = fs::File::open(report_path)
-        .wrap_err_with(|| format!("Failed to open kraken report file: {}", report_path.display()))?;
+    let report_file = fs::File::open(report_path).wrap_err_with(|| {
+        format!(
+            "Failed to open kraken report file: {}",
+            report_path.display()
+        )
+    })?;
 
     let reader = BufReader::new(report_file);
     let mut prev_index = None;

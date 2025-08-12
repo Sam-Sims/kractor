@@ -15,7 +15,7 @@ pub fn parse_fastq(
     tx: &Sender<fastq::Record>,
 ) -> Result<usize> {
     const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_millis(1500);
-    
+
     let mut num_reads = 0;
     let mut last_progress_update = Instant::now();
 

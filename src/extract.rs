@@ -26,11 +26,14 @@ pub fn process_single_end(
 
         let writer = scope.spawn(|_| {
             if fasta {
-                write_output_fasta(rx, &output[0])
-                    .wrap_err_with(|| format!("Failed to write output file: {}", output[0].display()))
+                write_output_fasta(rx, &output[0]).wrap_err_with(|| {
+                    format!("Failed to write output file: {}", output[0].display())
+                })
             } else {
                 write_output_fastq(rx, &output[0], compression_type, compression_level)
-                    .wrap_err_with(|| format!("Failed to write output file: {}", output[0].display()))
+                    .wrap_err_with(|| {
+                        format!("Failed to write output file: {}", output[0].display())
+                    })
             }
         });
 
@@ -60,13 +63,17 @@ pub fn process_paired_end(
         let reader1 = scope.spawn(|_| {
             let result = parse_fastq(&input[0], reads_to_save, &tx1);
             drop(tx1);
-            result.wrap_err_with(|| format!("Failed to parse first input file: {}", input[0].display()))
+            result.wrap_err_with(|| {
+                format!("Failed to parse first input file: {}", input[0].display())
+            })
         });
 
         let reader2 = scope.spawn(|_| {
             let result = parse_fastq(&input[1], reads_to_save, &tx2);
             drop(tx2);
-            result.wrap_err_with(|| format!("Failed to parse second input file: {}", input[1].display()))
+            result.wrap_err_with(|| {
+                format!("Failed to parse second input file: {}", input[1].display())
+            })
         });
 
         let writer1 = scope.spawn(|_| {
@@ -397,7 +404,8 @@ mod tests {
         let dir = tempdir().unwrap();
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![1239];
-        let saved_taxons = collect_taxons_to_save(&Some(report_path), true, false, &taxids).unwrap();
+        let saved_taxons =
+            collect_taxons_to_save(&Some(report_path), true, false, &taxids).unwrap();
 
         assert!(saved_taxons.contains(&1239));
         assert!(saved_taxons.contains(&91062));
@@ -409,7 +417,8 @@ mod tests {
         let dir = tempdir().unwrap();
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![91061];
-        let saved_taxons = collect_taxons_to_save(&Some(report_path), false, true, &taxids).unwrap();
+        let saved_taxons =
+            collect_taxons_to_save(&Some(report_path), false, true, &taxids).unwrap();
 
         assert!(saved_taxons.contains(&91061));
         assert!(saved_taxons.contains(&1239));
