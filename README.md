@@ -4,20 +4,20 @@
 ![](https://anaconda.org/bioconda/kractor/badges/version.svg)
 [![test](https://github.com/Sam-Sims/kractor/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/Sam-Sims/kractor/actions/workflows/test.yaml)
 [![check](https://github.com/Sam-Sims/kractor/actions/workflows/check.yaml/badge.svg?branch=main)](https://github.com/Sam-Sims/kractor/actions/workflows/check.yaml)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15761838.svg)](https://doi.org/10.5281/zenodo.15761838)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15761837.svg)](https://doi.org/10.5281/zenodo.15761837)
 
 # kractor
 
 **kra**ken extr**actor**
 
-Kractor extracts sequencing reads from fastq `[.gz/.bz2]` files using taxonomic classifications obtained via Kraken2. 
+Kractor extracts reads from fastq `[.gz/.bz2]` files using taxonomic classifications obtained via Kraken2. 
 It supports single or paired-end reads, can optionally include taxonomic parents or children, and uses minimal memory (~4.5 MB for a 17 GB FASTQ file).
 
 The end result is a `fast[q/a]` file containing all reads classified as the specified taxon(s).
 
 Kractor significantly enhances processing speed compared to KrakenTools for both paired and unpaired reads.
 
-*Performance vs KrakenTools:*
+Performance vs KrakenTools:
 - Paired compressed FASTQ: ~21× faster 
 - Paired uncompressed FASTQ: ~10× faster 
 - Unpaired: ~4× faster (compressed or uncompressed)
@@ -146,7 +146,7 @@ kractor -i sample.fastq -o extracted.fasta -k kraken_output.txt -t 562 --output-
 ```
 
 ### Summary statistics
-Use `--json-report` to get summary statistics (output to stdout on completion)
+Use `--summary` to get summary statistics (output to stdout on completion)
 ```json
 {
   "total_taxon_count": 2,
@@ -261,7 +261,7 @@ Extract all reads except those matching the given taxids. Can be combined with `
 Write a JSON report to stdout after processing.
 
 ## Citation 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15761838.svg)](https://doi.org/10.5281/zenodo.15761838)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15761837.svg)](https://doi.org/10.5281/zenodo.15761837)
 ```
-Sam Sims. (2025). Sam-Sims/kractor: kractor-1.0.1 (kractor-1.0.1). Zenodo. https://doi.org/10.5281/zenodo.15761838
+Sam Sims. (2025). Sam-Sims/kractor. Zenodo. https://doi.org/10.5281/zenodo.15761837
 ```
