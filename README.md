@@ -150,6 +150,9 @@ Use `--summary` to get summary statistics (output to stdout on completion)
 ```json
 {
   "total_taxon_count": 2,
+  "missing_taxon_ids": [
+    999999999
+  ]
   "reads_extracted_per_taxon": {
     "0": 745591,
     "1": 1646
@@ -199,7 +202,9 @@ One or more taxonomic IDs to extract.
 
 For example: `-t 1 2 10`
 
-Each taxid is affected by `--exclude`, `--parents`, and `--children` if those options are used.
+Each taxonomic id is affected by `--exclude`, `--parents`, and `--children` if those options are used.
+
+Taxonomic ids do not need to be present in a given report. This may be useful when running kractor in a wrapper script for several fastq files and just want to extract a set of taxon ids from them all - without caring if they are present or not.
 
 ### Optional:
 

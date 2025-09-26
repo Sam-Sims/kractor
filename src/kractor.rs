@@ -1,9 +1,10 @@
 use crate::extract::{process_paired_end, process_single_end};
+use crate::parsers::kraken::ProcessedKrakenOutput;
 use crate::{extract, parsers, Cli};
-use color_eyre::eyre::ensure;
+use color_eyre::eyre::{bail, ensure};
 use color_eyre::Result;
 use fxhash::{FxHashMap, FxHashSet};
-use log::{debug, info};
+use log::info;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -16,11 +17,13 @@ struct Summary {
     input_format: String,
     output_format: String,
     kractor_version: String,
+    missing_taxon_ids: Vec<i32>,
 }
 
 pub struct Kractor {
     args: Cli,
     taxon_ids: Vec<i32>,
+    missing_taxon_ids: Vec<i32>,
     reads_to_save: FxHashSet<Vec<u8>>,
     reads_per_taxon: FxHashMap<i32, usize>,
     summary: Option<Summary>,
@@ -31,6 +34,7 @@ impl Kractor {
         Self {
             args,
             taxon_ids: Vec::new(),
+            missing_taxon_ids: Vec::new(),
             reads_to_save: FxHashSet::default(),
             reads_per_taxon: FxHashMap::default(),
             summary: None,
@@ -49,24 +53,34 @@ impl Kractor {
     }
 
     fn collect_taxons(&mut self) -> Result<()> {
-        self.taxon_ids = extract::collect_taxons_to_save(
+        let collected = extract::collect_taxons_to_save(
             &self.args.report,
             self.args.children,
             self.args.parents,
             &self.args.taxid,
         )?;
-        debug!("Taxon IDs identified: {:?}", self.taxon_ids);
+        self.taxon_ids = collected.found;
+        self.missing_taxon_ids = collected.missing;
         Ok(())
     }
 
     fn process_kraken_output(&mut self) -> Result<()> {
-        (self.reads_to_save, self.reads_per_taxon) = parsers::kraken::process_kraken_output(
+        let ProcessedKrakenOutput {
+            reads_to_save,
+            reads_per_taxon,
+        } = parsers::kraken::process_kraken_output(
             &self.args.kraken,
             self.args.exclude,
             &self.taxon_ids,
         )?;
+        self.reads_to_save = reads_to_save;
+        self.reads_per_taxon = reads_per_taxon;
 
-        debug!("Identified {} reads to save", self.reads_to_save.len());
+        if self.reads_to_save.is_empty() {
+            bail!("No reads found for the specified taxon ID(s). Nothing to extract.");
+        }
+
+        info!("Identified {} reads to save", self.reads_to_save.len());
         Ok(())
     }
 
@@ -102,6 +116,7 @@ impl Kractor {
                     "fastq".to_string()
                 },
                 kractor_version: env!("CARGO_PKG_VERSION").to_string(),
+                missing_taxon_ids: self.missing_taxon_ids.clone(),
             });
         } else {
             let (reads_parsed1, reads_output1) = process_single_end(
@@ -119,6 +134,7 @@ impl Kractor {
             self.summary = Some(Summary {
                 total_taxon_count: self.taxon_ids.len(),
                 reads_extracted_per_taxon: self.reads_per_taxon.clone(),
+                missing_taxon_ids: self.missing_taxon_ids.clone(),
                 total_reads_in: reads_in,
                 total_reads_out: reads_out,
                 proportion_extracted: reads_out as f64 / reads_in as f64,
@@ -152,7 +168,6 @@ impl Kractor {
         );
         self.validate_outputs()?;
         self.collect_taxons()?;
-        info!("{} taxons identified to save", self.taxon_ids.len());
         info!("Processing Kraken2 output file");
         self.process_kraken_output()?;
         info!("Processing reads");
