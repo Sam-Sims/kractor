@@ -1,6 +1,6 @@
 use crate::extract::{process_paired_end, process_single_end};
 use crate::{extract, parsers, Cli};
-use color_eyre::eyre::ensure;
+use color_eyre::eyre::{bail, ensure};
 use color_eyre::Result;
 use fxhash::{FxHashMap, FxHashSet};
 use log::info;
@@ -64,6 +64,10 @@ impl Kractor {
             self.args.exclude,
             &self.taxon_ids,
         )?;
+
+        if self.reads_to_save.is_empty() {
+            bail!("No reads found for the specified taxon ID(s). Nothing to extract.");
+        }
 
         info!("Identified {} reads to save", self.reads_to_save.len());
         Ok(())
