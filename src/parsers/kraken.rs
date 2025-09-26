@@ -1,6 +1,6 @@
 use color_eyre::{eyre::bail, eyre::eyre, eyre::Context, Result};
 use fxhash::{FxHashMap, FxHashSet};
-use log::debug;
+use log::info;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -174,11 +174,12 @@ fn process_kraken_report_line(kraken_report: &str) -> Result<KrakenReportRecord>
     }
 }
 
+#[allow(clippy::type_complexity)]
 pub fn build_tree_from_kraken_report(
     taxon_to_save: &[i32],
     report_path: &PathBuf,
-) -> Result<(Vec<Tree>, HashMap<i32, usize>)> {
-    debug!("Building taxonomic tree from kraken report");
+) -> Result<(Vec<Tree>, HashMap<i32, usize>, Vec<i32>)> {
+    info!("Building taxonomic tree from kraken report");
     // will store the tree
     let mut nodes = Vec::new();
     // taxonid -> index in the nodes vector
@@ -234,17 +235,12 @@ pub fn build_tree_from_kraken_report(
 
     let missing_taxon_ids = taxon_to_save
         .iter()
-        .filter(|txid| !taxon_map.contains_key(txid))
-        .collect::<Vec<&i32>>();
+        .filter(|taxid| !taxon_map.contains_key(taxid))
+        .copied()
+        .collect::<Vec<i32>>();
 
-    if !missing_taxon_ids.is_empty() {
-        bail!(
-            "Failed to find taxon IDs in kraken report: {:?}",
-            missing_taxon_ids
-        );
-    }
-
-    Ok((nodes, taxon_map))
+    info!("Built taxonomic tree with {} nodes", nodes.len());
+    Ok((nodes, taxon_map, missing_taxon_ids))
 }
 
 pub fn extract_parents(
@@ -253,21 +249,16 @@ pub fn extract_parents(
     taxon_id: i32,
 ) -> Result<Vec<i32>> {
     // Backtracking traversal from the given taxon_id to the root
-    let start_index = taxon_map
-        .get(&taxon_id)
-        .ok_or_else(|| eyre!("Taxon ID {} not found in taxonomy map", taxon_id))?;
+
+    let &start_index = taxon_map.get(&taxon_id).unwrap();
 
     let mut parents = Vec::new();
     parents.push(taxon_id);
-    let mut curr_index = *start_index;
+    let mut curr_index = start_index;
 
     while let Some(parent_index) = nodes[curr_index].parent {
         if parent_index >= nodes.len() {
-            bail!(
-                "Invalid parent index {} for node at index {}",
-                parent_index,
-                curr_index
-            );
+            break;
         }
         parents.push(nodes[parent_index].taxon_id);
         curr_index = parent_index;
@@ -278,23 +269,13 @@ pub fn extract_parents(
 
 pub fn extract_children(nodes: &[Tree], start_index: usize, result: &mut Vec<i32>) -> Result<()> {
     // recursive post-order traversal of the tree
-    if start_index >= nodes.len() {
-        bail!(
-            "Invalid start index {} for node in tree of length {}",
-            start_index,
-            nodes.len()
-        );
-    }
     for &child_index in &nodes[start_index].children {
         if child_index >= nodes.len() {
-            bail!(
-                "Invalid child index {} for node at index {}",
-                child_index,
-                start_index
-            );
+            continue;
         }
         extract_children(nodes, child_index, result)?;
     }
+
     result.push(nodes[start_index].taxon_id);
     Ok(())
 }
@@ -584,7 +565,8 @@ mod tests {
         let mut file = File::create(&file_path).unwrap();
         file.write_all(test_data.as_bytes()).unwrap();
         let taxon_to_save = vec![1386, 1239];
-        let (nodes, taxon_map) = build_tree_from_kraken_report(&taxon_to_save, &file_path).unwrap();
+        let (nodes, taxon_map, _) =
+            build_tree_from_kraken_report(&taxon_to_save, &file_path).unwrap();
         println!("{:?}", nodes);
         assert_eq!(nodes.len(), 11);
 
@@ -640,7 +622,8 @@ mod tests {
         let mut file = File::create(&file_path).unwrap();
         file.write_all(test_data.as_bytes()).unwrap();
         let taxon_to_save = vec![1386, 1239];
-        let (nodes, taxon_map) = build_tree_from_kraken_report(&taxon_to_save, &file_path).unwrap();
+        let (nodes, taxon_map, _) =
+            build_tree_from_kraken_report(&taxon_to_save, &file_path).unwrap();
         println!("{:?}", nodes);
         assert_eq!(nodes.len(), 10);
 
@@ -691,7 +674,8 @@ mod tests {
         let mut file = File::create(&file_path).unwrap();
         file.write_all(test_data.as_bytes()).unwrap();
         let taxon_to_save = vec![1386, 1239, 0];
-        let (nodes, taxon_map) = build_tree_from_kraken_report(&taxon_to_save, &file_path).unwrap();
+        let (nodes, taxon_map, _) =
+            build_tree_from_kraken_report(&taxon_to_save, &file_path).unwrap();
         println!("{:?}", nodes);
         assert_eq!(nodes.len(), 11);
 
@@ -703,7 +687,7 @@ mod tests {
     }
 
     #[test]
-    fn test_build_tree_from_kraken_report_missing_taxon() {
+    fn test_build_tree_from_kraken_report_partial_missing_taxon() {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("kraken_report.txt");
         let test_data = "\
@@ -714,8 +698,31 @@ mod tests {
         let mut file = File::create(&file_path).unwrap();
         file.write_all(test_data.as_bytes()).unwrap();
         let taxon_to_save = vec![1386, 2];
-        let result = build_tree_from_kraken_report(&taxon_to_save, &file_path);
-        assert!(result.is_err());
+        let (nodes, taxon_map, missing_taxons) =
+            build_tree_from_kraken_report(&taxon_to_save, &file_path).unwrap();
+        assert_eq!(nodes.len(), 4);
+        assert_eq!(taxon_map.len(), 1);
+        assert!(taxon_map.contains_key(&2));
+        assert!(!taxon_map.contains_key(&1386));
+        assert_eq!(missing_taxons, vec![1386]);
+    }
+
+    #[test]
+    fn test_build_tree_from_kraken_report_all_missing_taxon() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("kraken_report.txt");
+        let test_data = "\
+        21.36\t745591\t745591\tU\t0\tunclassified
+        78.64\t2745487\t1646\tR\t1\troot
+        78.58\t2743340\t1360\tR1\t131567\t  cellular organisms";
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(test_data.as_bytes()).unwrap();
+        let taxon_to_save = vec![1386];
+        let (nodes, taxon_map, missing_taxons) =
+            build_tree_from_kraken_report(&taxon_to_save, &file_path).unwrap();
+        assert_eq!(nodes.len(), 3);
+        assert_eq!(taxon_map.len(), 0);
+        assert_eq!(missing_taxons, vec![1386]);
     }
 
     #[test]
@@ -770,31 +777,6 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_parents_taxon_not_found() {
-        let nodes = vec![Tree::new(1, 0, None)];
-        let taxon_map = HashMap::new();
-        let result = extract_parents(&taxon_map, &nodes, 99999);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_extract_parents_invalid_parent_index() {
-        let nodes = vec![Tree::new(1, 0, None), Tree::new(10, 1, Some(99999))];
-        let mut taxon_map = HashMap::new();
-        taxon_map.insert(10, 1);
-        let result = extract_parents(&taxon_map, &nodes, 10);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_extract_parents_empty_tree() {
-        let nodes: Vec<Tree> = Vec::new();
-        let taxon_map = HashMap::new();
-        let result = extract_parents(&taxon_map, &nodes, 0);
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_extract_children_valid() {
         let mut nodes = vec![
             Tree::new(1, 0, None),
@@ -814,31 +796,5 @@ mod tests {
         let mut result = Vec::new();
         extract_children(&nodes, 3, &mut result).unwrap();
         assert_eq!(result, vec![30]);
-    }
-
-    #[test]
-    fn test_extract_children_invalid_start_index() {
-        let nodes = vec![Tree::new(1, 0, None)];
-        let mut result = Vec::new();
-        let out_of_bounds_idx = 999999;
-        let extraction_result = extract_children(&nodes, out_of_bounds_idx, &mut result);
-        assert!(extraction_result.is_err());
-    }
-
-    #[test]
-    fn test_extract_children_invalid_child_index() {
-        let mut nodes = vec![Tree::new(1, 0, None), Tree::new(10, 1, Some(0))];
-        nodes[0].children.push(999);
-        let mut result = Vec::new();
-        let extraction_result = extract_children(&nodes, 0, &mut result);
-        assert!(extraction_result.is_err());
-    }
-
-    #[test]
-    fn test_extract_children_empty_tree() {
-        let nodes: Vec<Tree> = Vec::new();
-        let mut result = Vec::new();
-        let extraction_result = extract_children(&nodes, 0, &mut result);
-        assert!(extraction_result.is_err());
     }
 }

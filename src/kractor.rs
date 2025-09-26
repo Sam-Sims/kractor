@@ -3,7 +3,7 @@ use crate::{extract, parsers, Cli};
 use color_eyre::eyre::ensure;
 use color_eyre::Result;
 use fxhash::{FxHashMap, FxHashSet};
-use log::{debug, info};
+use log::info;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -55,7 +55,6 @@ impl Kractor {
             self.args.parents,
             &self.args.taxid,
         )?;
-        debug!("Taxon IDs identified: {:?}", self.taxon_ids);
         Ok(())
     }
 
@@ -66,7 +65,7 @@ impl Kractor {
             &self.taxon_ids,
         )?;
 
-        debug!("Identified {} reads to save", self.reads_to_save.len());
+        info!("Identified {} reads to save", self.reads_to_save.len());
         Ok(())
     }
 
@@ -152,7 +151,6 @@ impl Kractor {
         );
         self.validate_outputs()?;
         self.collect_taxons()?;
-        info!("{} taxons identified to save", self.taxon_ids.len());
         info!("Processing Kraken2 output file");
         self.process_kraken_output()?;
         info!("Processing reads");

@@ -3,7 +3,7 @@ use crate::parsers::kraken::{build_tree_from_kraken_report, extract_children, ex
 use color_eyre::{eyre::bail, eyre::eyre, eyre::WrapErr, Result};
 use crossbeam::{channel, thread};
 use fxhash::FxHashSet;
-use log::debug;
+use log::{debug, info, warn};
 use noodles::fastq;
 use std::path::PathBuf;
 
@@ -148,30 +148,41 @@ pub fn collect_taxons_to_save(
     }
 
     if let Some(report_path) = report {
-        let (nodes, taxon_map) = build_tree_from_kraken_report(taxids, report_path)
-            .wrap_err("Failed to build tree from Kraken report")?;
+        let (nodes, taxon_map, missing_taxon_ids) =
+            build_tree_from_kraken_report(taxids, report_path)
+                .wrap_err("Failed to build tree from Kraken report")?;
+
+        if !missing_taxon_ids.is_empty() {
+            warn!(
+                "The following taxon IDs were not found in the kraken report and will be ignored: {:?}",
+                missing_taxon_ids
+            );
+        }
+
+        // remove missing taxon ids from the input list
+        let taxids: Vec<i32> = taxids
+            .iter()
+            .filter(|id| !missing_taxon_ids.contains(id))
+            .cloned()
+            .collect();
+
+        if taxon_map.is_empty() {
+            bail!("No valid taxon IDs found in the kraken report");
+        }
 
         if children {
             debug!("Extracting children");
             let mut children = Vec::new();
             for taxid in taxids {
-                if let Some(&node_index) = taxon_map.get(taxid) {
-                    extract_children(&nodes, node_index, &mut children).wrap_err_with(|| {
-                        format!("Failed to extract children for taxon ID {taxid}")
-                    })?;
-                } else {
-                    return Err(eyre!("Taxon ID {} not found in taxonomy map", taxid));
+                if let Some(&node_index) = taxon_map.get(&taxid) {
+                    extract_children(&nodes, node_index, &mut children)?;
                 }
             }
             taxon_ids_to_save.extend(children);
         } else if parents {
             debug!("Extracting parents");
             for taxid in taxids {
-                taxon_ids_to_save.extend(
-                    extract_parents(&taxon_map, &nodes, *taxid).wrap_err_with(|| {
-                        format!("Failed to extract parents for taxon ID {taxid}")
-                    })?,
-                );
+                taxon_ids_to_save.extend(extract_parents(&taxon_map, &nodes, taxid)?);
             }
         } else {
             taxon_ids_to_save.extend(taxids);
@@ -187,6 +198,8 @@ pub fn collect_taxons_to_save(
     if taxon_ids_to_save.is_empty() {
         bail!("No taxon IDs were identified for extraction");
     }
+
+    info!("Identified {} taxon IDs to save", taxon_ids_to_save.len());
     Ok(taxon_ids_to_save)
 }
 
