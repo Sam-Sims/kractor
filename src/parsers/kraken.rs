@@ -197,9 +197,8 @@ pub fn build_tree_from_kraken_report(
     for line in reader.lines() {
         let line = line.wrap_err("Error reading kraken report line")?;
         let record = process_kraken_report_line(&line)?;
-        // if taxon_id == 0, it's an unclassified read so we can skip
-        if record.taxon_id == 0 {
-            continue;
+        if record.level == 0 {
+            prev_index = None;
         }
         // 1 will be the root of the tree
         if record.taxon_id == 1 {
@@ -378,6 +377,27 @@ mod tests {
     }
 
     #[test]
+    fn test_process_kraken_output_include_mode_with_unclassified() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("kraken_output.txt");
+        let test_data = "\
+        C\tread_1\t1337\t150\t0:1 1:10
+        C\tread_2\t2\t150\t0:1 1:10
+        C\tread_3\t1337\t150\t0:1 1:10
+        U\tread_4\t0\t150\t0:1 1:10";
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(test_data.as_bytes()).unwrap();
+        let taxon_ids_to_save = vec![1337, 0];
+        let (reads_to_save, taxon_counts) =
+            process_kraken_output(&file_path, false, &taxon_ids_to_save).unwrap();
+        assert_eq!(reads_to_save.len(), 3);
+        assert!(reads_to_save.contains(b"read_1".as_slice()));
+        assert!(reads_to_save.contains(b"read_3".as_slice()));
+        assert!(!reads_to_save.contains(b"read_2".as_slice()));
+        assert!(reads_to_save.contains(b"read_4".as_slice()));
+    }
+
+    #[test]
     fn test_process_kraken_output_exclude_mode() {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("kraken_output.txt");
@@ -546,11 +566,67 @@ mod tests {
     // report parsing tests
 
     #[test]
-    fn test_build_tree_from_kraken_report_valid() {
+    fn test_build_tree_from_kraken_report_valid_with_unclassified() {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("kraken_report.txt");
         let test_data = "\
         21.36\t745591\t745591\tU\t0\tunclassified
+        78.64\t2745487\t1646\tR\t1\troot
+        78.58\t2743340\t1360\tR1\t131567\t  cellular organisms
+        78.21\t2730479\t8458\tD\t2\t    Bacteria
+        61.55\t2148918\t1359\tD1\t1783272\t      Terrabacteria group
+        61.40\t2143487\t321\tP\t1239\t        Bacillota
+        61.37\t2142480\t8314\tC\t91062\t          Bacilli2
+        61.37\t2142480\t8314\tC\t91061\t          Bacilli
+        38.95\t1359681\t1300\tO\t1385\t            Bacillales
+        16.53\t577203\t366\tF\t186817\t              Bacillaceae
+        16.50\t576156\t22486\tG\t1386\t                Bacillus";
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(test_data.as_bytes()).unwrap();
+        let taxon_to_save = vec![1386, 1239];
+        let (nodes, taxon_map) = build_tree_from_kraken_report(&taxon_to_save, &file_path).unwrap();
+        println!("{:?}", nodes);
+        assert_eq!(nodes.len(), 11);
+
+        // Check unclassified
+        assert_eq!(nodes[0].taxon_id, 0);
+        assert_eq!(nodes[0].level_num, 0);
+        assert_eq!(nodes[0].parent, None);
+        assert_eq!(nodes[0].children, Vec::<usize>::new());
+
+        // Check root
+        assert_eq!(nodes[1].taxon_id, 1);
+        assert_eq!(nodes[1].level_num, 0);
+        assert_eq!(nodes[1].parent, None);
+        assert_eq!(nodes[1].children, vec![2]);
+
+        // Check Bacteria
+        assert_eq!(nodes[3].taxon_id, 2);
+        assert_eq!(nodes[3].level_num, 2);
+        assert_eq!(nodes[3].parent, Some(2)); // Parent should be cellular organisms
+        assert_eq!(nodes[3].children, vec![4]); // Children should be Terrabacteria group
+
+        // Check Bacillota
+        assert_eq!(nodes[5].taxon_id, 1239);
+        assert_eq!(nodes[5].level_num, 4);
+        assert_eq!(nodes[5].parent, Some(4)); // Parent should be Terrabacteria group
+        assert_eq!(nodes[5].children, vec![6, 7]); // Children should be Bacilli and Bacilli2
+
+        // Check that Bacilli2 and Bacilli are siblings (share same parent)
+        assert_eq!(nodes[7].parent, Some(5));
+        assert_eq!(nodes[6].parent, Some(5));
+
+        // Check taxon map
+        assert_eq!(taxon_map.len(), 2);
+        assert_eq!(taxon_map[&1386], 10);
+        assert_eq!(taxon_map[&1239], 5);
+    }
+
+    #[test]
+    fn test_build_tree_from_kraken_report_valid_no_unclassified() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("kraken_report.txt");
+        let test_data = "\
         78.64\t2745487\t1646\tR\t1\troot
         78.58\t2743340\t1360\tR1\t131567\t  cellular organisms
         78.21\t2730479\t8458\tD\t2\t    Bacteria
@@ -588,11 +664,42 @@ mod tests {
 
         // Check that Bacilli2 and Bacilli are siblings (share same parent)
         assert_eq!(nodes[6].parent, Some(4));
+        assert_eq!(nodes[5].parent, Some(4));
 
         // Check taxon map
         assert_eq!(taxon_map.len(), 2);
         assert_eq!(taxon_map[&1386], 9);
         assert_eq!(taxon_map[&1239], 4);
+    }
+
+    #[test]
+    fn test_build_tree_from_kraken_report_extract_unclassified() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("kraken_report.txt");
+        let test_data = "\
+        21.36\t745591\t745591\tU\t0\tunclassified
+        78.64\t2745487\t1646\tR\t1\troot
+        78.58\t2743340\t1360\tR1\t131567\t  cellular organisms
+        78.21\t2730479\t8458\tD\t2\t    Bacteria
+        61.55\t2148918\t1359\tD1\t1783272\t      Terrabacteria group
+        61.40\t2143487\t321\tP\t1239\t        Bacillota
+        61.37\t2142480\t8314\tC\t91062\t          Bacilli2
+        61.37\t2142480\t8314\tC\t91061\t          Bacilli
+        38.95\t1359681\t1300\tO\t1385\t            Bacillales
+        16.53\t577203\t366\tF\t186817\t              Bacillaceae
+        16.50\t576156\t22486\tG\t1386\t                Bacillus";
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(test_data.as_bytes()).unwrap();
+        let taxon_to_save = vec![1386, 1239, 0];
+        let (nodes, taxon_map) = build_tree_from_kraken_report(&taxon_to_save, &file_path).unwrap();
+        println!("{:?}", nodes);
+        assert_eq!(nodes.len(), 11);
+
+        // Check taxon map
+        assert_eq!(taxon_map.len(), 3);
+        assert_eq!(taxon_map[&0], 0);
+        assert_eq!(taxon_map[&1386], 10);
+        assert_eq!(taxon_map[&1239], 5);
     }
 
     #[test]

@@ -389,6 +389,17 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_unclassified() {
+        let dir = tempdir().unwrap();
+        let report_path = create_test_kraken_report(&dir);
+        let taxids = vec![0, 2];
+        let saved_taxons =
+            collect_taxons_to_save(&Some(report_path), false, false, &taxids).unwrap();
+
+        assert_eq!(saved_taxons, vec![0, 2]);
+    }
+
+    #[test]
     fn test_no_parents_no_children() {
         let dir = tempdir().unwrap();
         let report_path = create_test_kraken_report(&dir);
