@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2025-09-26
+
+### Added
+- Able to specifiy taxon ids that are not present, without kractor stopping. These are instead logged to stderr with a warning. This may be useful when running kractor in a wrapper script for several fastq files and just want to extract a set of taxonids from them all - without caring if they are present or not.
+- Include a new field `missing_taxon_ids` in the summary output.
+
+### Changed
+- Under the hood refactoring, introducing structs for the processed kraken outputs and processed kraken trees to simplify the returned data.
+
+### Fixed
+- Unclassified reads being skipped in the tree building stage, meaning they were unable to be extracted 
+
 ## [2.0.0] - 2025-08-12
 
 ### Added
