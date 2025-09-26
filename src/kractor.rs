@@ -134,6 +134,7 @@ impl Kractor {
             self.summary = Some(Summary {
                 total_taxon_count: self.taxon_ids.len(),
                 reads_extracted_per_taxon: self.reads_per_taxon.clone(),
+                missing_taxon_ids: self.missing_taxon_ids.clone(),
                 total_reads_in: reads_in,
                 total_reads_out: reads_out,
                 proportion_extracted: reads_out as f64 / reads_in as f64,
@@ -144,7 +145,6 @@ impl Kractor {
                     "fastq".to_string()
                 },
                 kractor_version: env!("CARGO_PKG_VERSION").to_string(),
-                missing_taxon_ids: self.missing_taxon_ids.clone(),
             });
         }
 
