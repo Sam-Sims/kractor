@@ -1,11 +1,19 @@
 use crate::parsers::fastx::{parse_fastq, write_output_fasta, write_output_fastq};
-use crate::parsers::kraken::{build_tree_from_kraken_report, extract_children, extract_parents};
+use crate::parsers::kraken::{
+    build_tree_from_kraken_report, extract_children, extract_parents, ProcessedKrakenTree,
+};
 use color_eyre::{eyre::bail, eyre::eyre, eyre::WrapErr, Result};
 use crossbeam::{channel, thread};
 use fxhash::FxHashSet;
 use log::{debug, info, warn};
 use noodles::fastq;
 use std::path::PathBuf;
+
+#[derive(Debug, Clone)]
+pub struct CollectedTaxonIds {
+    pub found: Vec<i32>,
+    pub missing: Vec<i32>,
+}
 
 pub fn process_single_end(
     reads_to_save: &FxHashSet<Vec<u8>>,
@@ -139,8 +147,9 @@ pub fn collect_taxons_to_save(
     children: bool,
     parents: bool,
     taxids: &[i32],
-) -> Result<Vec<i32>> {
+) -> Result<CollectedTaxonIds> {
     let mut taxon_ids_to_save = Vec::new();
+    let mut missing_taxon_ids = Vec::new();
 
     // I dont think we will reach this code ever since clap should catch this - but in case it doesnt
     if (parents || children) && report.is_none() {
@@ -148,16 +157,21 @@ pub fn collect_taxons_to_save(
     }
 
     if let Some(report_path) = report {
-        let (nodes, taxon_map, missing_taxon_ids) =
-            build_tree_from_kraken_report(taxids, report_path)
-                .wrap_err("Failed to build tree from Kraken report")?;
+        let ProcessedKrakenTree {
+            nodes,
+            taxon_map,
+            missing_taxon_ids: missing_ids,
+        } = build_tree_from_kraken_report(taxids, report_path)
+            .wrap_err("Failed to build tree from Kraken report")?;
 
-        if !missing_taxon_ids.is_empty() {
+        if !missing_ids.is_empty() {
             warn!(
                 "The following taxon IDs were not found in the kraken report and will be ignored: {:?}",
-                missing_taxon_ids
+                missing_ids
             );
         }
+
+        missing_taxon_ids = missing_ids;
 
         // remove missing taxon ids from the input list
         let taxids: Vec<i32> = taxids
@@ -195,12 +209,18 @@ pub fn collect_taxons_to_save(
     taxon_ids_to_save.sort_unstable();
     taxon_ids_to_save.dedup();
 
+    missing_taxon_ids.sort_unstable();
+    missing_taxon_ids.dedup();
+
     if taxon_ids_to_save.is_empty() {
         bail!("No taxon IDs were identified for extraction");
     }
 
     info!("Identified {} taxon IDs to save", taxon_ids_to_save.len());
-    Ok(taxon_ids_to_save)
+    Ok(CollectedTaxonIds {
+        found: taxon_ids_to_save,
+        missing: missing_taxon_ids,
+    })
 }
 
 #[cfg(test)]
@@ -396,9 +416,10 @@ mod tests {
     #[test]
     fn test_no_report() {
         let taxids = vec![123, 456, 789];
-        let saved_taxons = collect_taxons_to_save(&None, false, false, &taxids).unwrap();
+        let collected = collect_taxons_to_save(&None, false, false, &taxids).unwrap();
 
-        assert_eq!(saved_taxons, taxids);
+        assert_eq!(collected.found, taxids);
+        assert!(collected.missing.is_empty());
     }
 
     #[test]
@@ -406,10 +427,10 @@ mod tests {
         let dir = tempdir().unwrap();
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![0, 2];
-        let saved_taxons =
-            collect_taxons_to_save(&Some(report_path), false, false, &taxids).unwrap();
+        let collected = collect_taxons_to_save(&Some(report_path), false, false, &taxids).unwrap();
 
-        assert_eq!(saved_taxons, vec![0, 2]);
+        assert_eq!(collected.found, vec![0, 2]);
+        assert!(collected.missing.is_empty());
     }
 
     #[test]
@@ -417,10 +438,10 @@ mod tests {
         let dir = tempdir().unwrap();
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![1385, 1386, 91061];
-        let saved_taxons =
-            collect_taxons_to_save(&Some(report_path), false, false, &taxids).unwrap();
+        let collected = collect_taxons_to_save(&Some(report_path), false, false, &taxids).unwrap();
 
-        assert_eq!(saved_taxons, taxids);
+        assert_eq!(collected.found, taxids);
+        assert!(collected.missing.is_empty());
     }
 
     #[test]
@@ -428,12 +449,11 @@ mod tests {
         let dir = tempdir().unwrap();
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![1239];
-        let saved_taxons =
-            collect_taxons_to_save(&Some(report_path), true, false, &taxids).unwrap();
+        let collected = collect_taxons_to_save(&Some(report_path), true, false, &taxids).unwrap();
 
-        assert!(saved_taxons.contains(&1239));
-        assert!(saved_taxons.contains(&91062));
-        assert!(saved_taxons.contains(&91061));
+        assert!(collected.found.contains(&1239));
+        assert!(collected.found.contains(&91062));
+        assert!(collected.found.contains(&91061));
     }
 
     #[test]
@@ -441,14 +461,13 @@ mod tests {
         let dir = tempdir().unwrap();
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![91061];
-        let saved_taxons =
-            collect_taxons_to_save(&Some(report_path), false, true, &taxids).unwrap();
+        let collected = collect_taxons_to_save(&Some(report_path), false, true, &taxids).unwrap();
 
-        assert!(saved_taxons.contains(&91061));
-        assert!(saved_taxons.contains(&1239));
-        assert!(saved_taxons.contains(&1783272));
-        assert!(saved_taxons.contains(&131567));
-        assert!(saved_taxons.contains(&2));
+        assert!(collected.found.contains(&91061));
+        assert!(collected.found.contains(&1239));
+        assert!(collected.found.contains(&1783272));
+        assert!(collected.found.contains(&131567));
+        assert!(collected.found.contains(&2));
     }
 
     #[test]
@@ -462,11 +481,23 @@ mod tests {
     }
 
     #[test]
+    fn test_missing_taxons_recorded() {
+        let dir = tempdir().unwrap();
+        let report_path = create_test_kraken_report(&dir);
+        let taxids = vec![1239, 999];
+        let collected = collect_taxons_to_save(&Some(report_path), false, false, &taxids).unwrap();
+
+        assert!(collected.found.contains(&1239));
+        assert_eq!(collected.missing, vec![999]);
+    }
+
+    #[test]
     fn test_dedup_and_sort() {
         let taxids = vec![456, 123, 456, 789, 123];
-        let saved_taxons = collect_taxons_to_save(&None, false, false, &taxids).unwrap();
+        let collected = collect_taxons_to_save(&None, false, false, &taxids).unwrap();
 
-        assert_eq!(saved_taxons, vec![123, 456, 789]);
+        assert_eq!(collected.found, vec![123, 456, 789]);
+        assert!(collected.missing.is_empty());
     }
 
     #[test]
