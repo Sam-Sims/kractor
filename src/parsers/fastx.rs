@@ -48,11 +48,14 @@ pub fn parse_fastq(
 }
 
 fn infer_compression(file_path: &PathBuf) -> niffler::compression::Format {
-    let path = Path::new(&file_path);
-    let ext = path.extension().unwrap().to_str().unwrap();
-    match ext {
-        "gz" => niffler::compression::Format::Gzip,
-        "bz2" => niffler::compression::Format::Bzip,
+    let path = Path::new(file_path);
+    match path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+    {
+        Some(ref ext) if ext == "gz" => niffler::compression::Format::Gzip,
+        Some(ref ext) if ext == "bz2" => niffler::compression::Format::Bzip,
         _ => niffler::compression::Format::No,
     }
 }
@@ -155,6 +158,22 @@ mod tests {
         let compression = infer_compression(&file_path);
 
         assert_eq!(compression, niffler::compression::Format::No);
+    }
+
+    #[test]
+    fn test_infer_compression_no_extension() {
+        let file_path = PathBuf::from("test");
+        let compression = infer_compression(&file_path);
+
+        assert_eq!(compression, niffler::compression::Format::No);
+    }
+
+    #[test]
+    fn test_infer_compression_uppercase_extension() {
+        let file_path = PathBuf::from("test.GZ");
+        let compression = infer_compression(&file_path);
+
+        assert_eq!(compression, niffler::compression::Format::Gzip);
     }
 
     #[test]
