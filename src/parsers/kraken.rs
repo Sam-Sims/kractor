@@ -111,9 +111,13 @@ pub fn process_kraken_output(
     })?;
     let reader = BufReader::new(kraken_file);
 
-    for line_result in reader.lines() {
-        let line = line_result.wrap_err("Error reading kraken output line")?;
-        let record = process_kraken_output_line(&line)?;
+    for (line_number, line_result) in reader.lines().enumerate() {
+        let line_number = line_number + 1;
+        let line = line_result
+            .wrap_err_with(|| format!("Error reading kraken output line {line_number}"))?;
+        let record = process_kraken_output_line(&line).wrap_err_with(|| {
+            format!("Failed to parse kraken output at line {line_number}: {line}")
+        })?;
         if (exclude && !taxon_ids_to_save.contains(&record.taxon_id))
             || (!exclude && taxon_ids_to_save.contains(&record.taxon_id))
         {
@@ -189,7 +193,7 @@ fn process_kraken_report_line(kraken_report: &str) -> Result<KrakenReportRecord>
     }
 }
 
-fn should_skip_header_line(line: &str, err: &color_eyre::Report) -> bool {
+fn should_skip_header_line(line: &str) -> bool {
     let fields: Vec<&str> = line.split('\t').collect();
     if fields.len() != 6 {
         return false;
@@ -225,16 +229,19 @@ pub fn build_tree_from_kraken_report(
     let mut prev_index = None;
 
     for (line_number, line_result) in reader.lines().enumerate() {
-        let line =
-            line_result.wrap_err(format!("Error reading kraken report line {}", line_number))?;
+        let line_number = line_number + 1;
+        let line = line_result
+            .wrap_err_with(|| format!("Error reading kraken report line {line_number}"))?;
         let record = match process_kraken_report_line(&line) {
             Ok(record) => record,
             Err(err) => {
-                if detect_header && line_number == 0 && should_skip_header_line(&line, &err) {
+                if detect_header && line_number == 1 && should_skip_header_line(&line) {
                     warn!("The first line of the kraken report looks like a header and will be skipped. If you want to disable this behaviour use --no-header-detect");
                     continue;
                 }
-                return Err(err);
+                return Err(err).wrap_err_with(|| {
+                    format!("Failed to build tree from kraken report at line {line_number}: {line}")
+                });
             }
         };
         if record.level == 0 {

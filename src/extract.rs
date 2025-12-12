@@ -162,8 +162,7 @@ pub fn collect_taxons_to_save(
             nodes,
             taxon_map,
             missing_taxon_ids: missing_ids,
-        } = build_tree_from_kraken_report(taxids, report_path, detect_report_header)
-            .wrap_err("Failed to build tree from Kraken report")?;
+        } = build_tree_from_kraken_report(taxids, report_path, detect_report_header)?;
 
         if !missing_ids.is_empty() {
             warn!(
