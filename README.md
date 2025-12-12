@@ -10,25 +10,29 @@
 
 **kra**ken extr**actor**
 
-Kractor extracts reads from fastq `[.gz/.bz2]` files using taxonomic classifications obtained via Kraken2. 
-It supports single or paired-end reads, can optionally include taxonomic parents or children, and uses minimal memory (~4.5 MB for a 17 GB FASTQ file).
+Kractor extracts reads from fastq `[.gz/.bz2]` files using taxonomic classifications obtained via Kraken2.
+It supports single or paired-end reads, can optionally include taxonomic parents or children, and uses minimal memory (~
+4.5 MB for a 17 GB FASTQ file).
 
 The end result is a `fast[q/a]` file containing all reads classified as the specified taxon(s).
 
 Kractor significantly enhances processing speed compared to KrakenTools for both paired and unpaired reads.
 
 Performance vs KrakenTools:
-- Paired compressed FASTQ: ~21× faster 
-- Paired uncompressed FASTQ: ~10× faster 
+
+- Paired compressed FASTQ: ~21× faster
+- Paired uncompressed FASTQ: ~10× faster
 - Unpaired: ~4× faster (compressed or uncompressed)
 
 For additional details, refer to the [benchmarks](benchmarks/benchmarks.md)
 
 ## Motivation
 
-Provides similar functionality to the [KrakenTools](https://github.com/jenniferlu717/KrakenTools) `extract_kraken_reads` python script.
+Provides similar functionality to the [KrakenTools](https://github.com/jenniferlu717/KrakenTools) `extract_kraken_reads`
+python script.
 
-However the main motivation was to enhance speed when processing multiple, large FASTQ files - and as a way to learn Rust.
+However the main motivation was to enhance speed when processing multiple, large FASTQ files - and as a way to learn
+Rust.
 
 ## Installation
 
@@ -115,6 +119,8 @@ Options:
           Output results in FASTA format
       --summary
           Enable a JSON summary output written to stdout
+      --no-header-detect
+          Disable detection and skipping of header lines in the Kraken2 report
   -v, --verbose
           Enable verbose output
   -h, --help
@@ -146,7 +152,9 @@ kractor -i sample.fastq -o extracted.fasta -k kraken_output.txt -t 562 --output-
 ```
 
 ### Summary statistics
+
 Use `--summary` to get summary statistics (output to stdout on completion)
+
 ```json
 {
   "total_taxon_count": 2,
@@ -162,7 +170,7 @@ Use `--summary` to get summary statistics (output to stdout on completion)
   "proportion_extracted": 0.2140419091180432,
   "input_format": "single",
   "output_format": "fastq",
-  "kractor_version": "2.0.0"
+  "kractor_version": "3.1.0"
 }
 ```
 
@@ -174,7 +182,7 @@ Use `--summary` to get summary statistics (output to stdout on completion)
 
 `-i, --input`
 
-Specifies one or two input FASTQ files to extract reads from. Files may be uncompressed or compressed (`gz`, `bz2`). 
+Specifies one or two input FASTQ files to extract reads from. Files may be uncompressed or compressed (`gz`, `bz2`).
 Paired end reads can be specified by:
 
 Using `--input` twice: `-i <R1_fastq_file> -i <R2_fastq_file>`
@@ -185,26 +193,30 @@ Using `--input` once but passing both files: `-i <R1_fastq_file> <R2_fastq_file>
 
 `-o, --output`
 
-Specifies the output file(s) for extracted reads, matching the order of the input files. 
+Specifies the output file(s) for extracted reads, matching the order of the input files.
 Compression type is inferred from the file extension (.gz, .bz2). If not recognised, output will be uncompressed.
 
 #### Kraken Output
 
 `-k, --kraken`
 
-Path to the [Standard Kraken Output Format file](https://github.com/DerrickWood/kraken2/wiki/Manual#standard-kraken-output-format), containing taxonomic classification of read IDs.
+Path to
+the [Standard Kraken Output Format file](https://github.com/DerrickWood/kraken2/wiki/Manual#standard-kraken-output-format),
+containing taxonomic classification of read IDs.
 
 #### Taxid
 
 `-t, --taxid`
 
-One or more taxonomic IDs to extract. 
+One or more taxonomic IDs to extract.
 
 For example: `-t 1 2 10`
 
 Each taxonomic id is affected by `--exclude`, `--parents`, and `--children` if those options are used.
 
-Taxonomic ids do not need to be present in a given report. This may be useful when running kractor in a wrapper script for several fastq files and just want to extract a set of taxon ids from them all - without caring if they are present or not.
+Taxonomic ids do not need to be present in a given report. This may be useful when running kractor in a wrapper script
+for several fastq files and just want to extract a set of taxon ids from them all - without caring if they are present
+or not.
 
 ### Optional:
 
@@ -212,20 +224,22 @@ Taxonomic ids do not need to be present in a given report. This may be useful wh
 
 `--compression-format`
 
-Manually set output compression format, overriding what is inferred from file names. 
+Manually set output compression format, overriding what is inferred from file names.
 
 Valid values:
-- `gz` – gzip compression 
-- `bz2` – bzip2 compression 
+
+- `gz` – gzip compression
+- `bz2` – bzip2 compression
 - `none` – no compression
 
 #### Compression level
 
 `--compression-level`
 
-Set compression level (1–9). 
-- 1 = fastest, largest file 
-- 9 = slowest, smallest file 
+Set compression level (1–9).
+
+- 1 = fastest, largest file
+- 9 = slowest, smallest file
 
 Default: 2 (balance of speed and size)
 
@@ -239,7 +253,12 @@ Output sequences in FASTA format instead of FASTQ.
 
 `-r, --report`
 
-Path to the [Kraken2 report file](https://github.com/DerrickWood/kraken2/wiki/Manual#sample-report-output-format). Required if using `--parents` or `--children`.
+Path to the [Kraken2 report file](https://github.com/DerrickWood/kraken2/wiki/Manual#sample-report-output-format).
+Required if using `--parents` or `--children`.
+
+The first line is automatically treated as a header if it looks non-numeric; use `--no-header-detect` to force parsing
+from the very first line. Parsing errors will include the report line number and offending line to help spot format
+issues.
 
 #### Parents
 
@@ -265,8 +284,10 @@ Extract all reads except those matching the given taxids. Can be combined with `
 
 Write a JSON report to stdout after processing.
 
-## Citation 
+## Citation
+
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15761837.svg)](https://doi.org/10.5281/zenodo.15761837)
+
 ```
 Sam Sims. (2025). Sam-Sims/kractor. Zenodo. https://doi.org/10.5281/zenodo.15761837
 ```

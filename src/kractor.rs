@@ -58,6 +58,7 @@ impl Kractor {
             self.args.children,
             self.args.parents,
             &self.args.taxid,
+            !self.args.no_report_header_detect,
         )?;
         self.taxon_ids = collected.found;
         self.missing_taxon_ids = collected.missing;
@@ -203,6 +204,7 @@ mod tests {
             exclude: false,
             output_fasta: false,
             summary: false,
+            no_report_header_detect: false,
             verbose: false,
         };
         let kractor = Kractor::new(args);
@@ -228,6 +230,7 @@ mod tests {
             exclude: false,
             output_fasta: false,
             summary: false,
+            no_report_header_detect: false,
             verbose: false,
         };
         let kractor = Kractor::new(args);
