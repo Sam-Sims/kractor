@@ -48,6 +48,9 @@ pub struct Cli {
     /// Enable a JSON summary output written to stdout.
     #[arg(long = "summary")]
     pub summary: bool,
+    /// Disable detection and skipping of any header lines in the Kraken2 report.
+    #[arg(long = "no-header-detect", action)]
+    pub no_report_header_detect: bool,
     /// Enable verbose output.
     #[arg(short, long)]
     pub verbose: bool,

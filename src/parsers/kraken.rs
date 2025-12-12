@@ -1,6 +1,6 @@
 use color_eyre::{eyre::bail, eyre::eyre, eyre::Context, Result};
 use fxhash::{FxHashMap, FxHashSet};
-use log::info;
+use log::{info, warn};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -189,9 +189,24 @@ fn process_kraken_report_line(kraken_report: &str) -> Result<KrakenReportRecord>
     }
 }
 
+fn should_skip_header_line(line: &str, err: &color_eyre::Report) -> bool {
+    let fields: Vec<&str> = line.split('\t').collect();
+    if fields.len() != 6 {
+        return false;
+    }
+
+    let all_string = fields.iter().all(|field| {
+        let trimmed = field.trim();
+        trimmed.is_empty() || (trimmed.parse::<f32>().is_err() && trimmed.parse::<i32>().is_err())
+    });
+
+    all_string
+}
+
 pub fn build_tree_from_kraken_report(
     taxon_to_save: &[i32],
     report_path: &PathBuf,
+    detect_header: bool,
 ) -> Result<ProcessedKrakenTree> {
     info!("Building taxonomic tree from kraken report");
     // will store the tree
@@ -209,9 +224,19 @@ pub fn build_tree_from_kraken_report(
     let reader = BufReader::new(report_file);
     let mut prev_index = None;
 
-    for line in reader.lines() {
-        let line = line.wrap_err("Error reading kraken report line")?;
-        let record = process_kraken_report_line(&line)?;
+    for (line_number, line_result) in reader.lines().enumerate() {
+        let line =
+            line_result.wrap_err(format!("Error reading kraken report line {}", line_number))?;
+        let record = match process_kraken_report_line(&line) {
+            Ok(record) => record,
+            Err(err) => {
+                if detect_header && line_number == 0 && should_skip_header_line(&line, &err) {
+                    warn!("The first line of the kraken report looks like a header and will be skipped. If you want to disable this behaviour use --no-header-detect");
+                    continue;
+                }
+                return Err(err);
+            }
+        };
         if record.level == 0 {
             prev_index = None;
         }
@@ -566,6 +591,64 @@ mod tests {
         assert!(process_kraken_report_line(line).is_err());
     }
 
+    #[test]
+    fn test_process_kraken_report_header() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("kraken_report.txt");
+        let test_data = "\
+        percent\tclades\ttaxons\trank\ttaxid\tscientific name
+        100.00\t100\t100\tR\t1\troot
+        10.77\t100\t50\tS\t1337\t  Homo sapiens";
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(test_data.as_bytes()).unwrap();
+
+        let taxon_to_save = vec![1337];
+        let ProcessedKrakenTree {
+            nodes,
+            taxon_map,
+            missing_taxon_ids,
+        } = build_tree_from_kraken_report(&taxon_to_save, &file_path, true).unwrap();
+
+        assert_eq!(nodes.len(), 2);
+        assert_eq!(nodes[0].taxon_id, 1);
+        assert_eq!(nodes[0].level_num, 0);
+        assert_eq!(nodes[1].taxon_id, 1337);
+        assert_eq!(nodes[1].parent, Some(0));
+        assert_eq!(taxon_map[&1337], 1);
+        assert!(missing_taxon_ids.is_empty());
+    }
+
+    #[test]
+    fn test_process_kraken_report_header_disabled() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("kraken_report.txt");
+        let test_data = "\
+        percent\tclades\ttaxons\trank\ttaxid\tscientific name
+        100.00\t100\t100\tR\t1\troot
+        10.77\t100\t50\tS\t1337\t  Homo sapiens";
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(test_data.as_bytes()).unwrap();
+
+        let taxon_to_save = vec![1337];
+        let result = build_tree_from_kraken_report(&taxon_to_save, &file_path, false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_process_kraken_report_invalid_first_line_not_header() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("kraken_report.txt");
+        let test_data = "\
+        BAD\tIAM ERRROR
+        100.00\t100\t100\tR\t1\troot";
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(test_data.as_bytes()).unwrap();
+
+        let taxon_to_save = vec![1];
+        let result = build_tree_from_kraken_report(&taxon_to_save, &file_path, true);
+        assert!(result.is_err());
+    }
+
     // report parsing tests
 
     #[test]
@@ -589,7 +672,7 @@ mod tests {
         let taxon_to_save = vec![1386, 1239];
         let ProcessedKrakenTree {
             nodes, taxon_map, ..
-        } = build_tree_from_kraken_report(&taxon_to_save, &file_path).unwrap();
+        } = build_tree_from_kraken_report(&taxon_to_save, &file_path, true).unwrap();
         println!("{:?}", nodes);
         assert_eq!(nodes.len(), 11);
 
@@ -647,7 +730,7 @@ mod tests {
         let taxon_to_save = vec![1386, 1239];
         let ProcessedKrakenTree {
             nodes, taxon_map, ..
-        } = build_tree_from_kraken_report(&taxon_to_save, &file_path).unwrap();
+        } = build_tree_from_kraken_report(&taxon_to_save, &file_path, true).unwrap();
         println!("{:?}", nodes);
         assert_eq!(nodes.len(), 10);
 
@@ -700,7 +783,7 @@ mod tests {
         let taxon_to_save = vec![1386, 1239, 0];
         let ProcessedKrakenTree {
             nodes, taxon_map, ..
-        } = build_tree_from_kraken_report(&taxon_to_save, &file_path).unwrap();
+        } = build_tree_from_kraken_report(&taxon_to_save, &file_path, true).unwrap();
         println!("{:?}", nodes);
         assert_eq!(nodes.len(), 11);
 
@@ -727,7 +810,7 @@ mod tests {
             nodes,
             taxon_map,
             missing_taxon_ids: missing_taxons,
-        } = build_tree_from_kraken_report(&taxon_to_save, &file_path).unwrap();
+        } = build_tree_from_kraken_report(&taxon_to_save, &file_path, true).unwrap();
         assert_eq!(nodes.len(), 4);
         assert_eq!(taxon_map.len(), 1);
         assert!(taxon_map.contains_key(&2));
@@ -750,7 +833,7 @@ mod tests {
             nodes,
             taxon_map,
             missing_taxon_ids: missing_taxons,
-        } = build_tree_from_kraken_report(&taxon_to_save, &file_path).unwrap();
+        } = build_tree_from_kraken_report(&taxon_to_save, &file_path, true).unwrap();
         assert_eq!(nodes.len(), 3);
         assert_eq!(taxon_map.len(), 0);
         assert_eq!(missing_taxons, vec![1386]);
@@ -760,7 +843,7 @@ mod tests {
     fn test_build_tree_from_kraken_report_file_not_found() {
         let nonexistent_path = PathBuf::from("nonexistent_file.txt");
         let taxon_to_save = vec![1386];
-        let result = build_tree_from_kraken_report(&taxon_to_save, &nonexistent_path);
+        let result = build_tree_from_kraken_report(&taxon_to_save, &nonexistent_path, true);
         assert!(result.is_err());
     }
 
@@ -776,7 +859,7 @@ mod tests {
         let mut file = File::create(&file_path).unwrap();
         file.write_all(test_data.as_bytes()).unwrap();
         let taxon_to_save = vec![131567];
-        let result = build_tree_from_kraken_report(&taxon_to_save, &file_path);
+        let result = build_tree_from_kraken_report(&taxon_to_save, &file_path, true);
         assert!(result.is_err());
     }
 
