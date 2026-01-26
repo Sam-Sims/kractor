@@ -157,10 +157,13 @@ Use `--summary` to get summary statistics (output to stdout on completion)
 
 ```json
 {
-  "total_taxon_count": 2,
+  "taxons_identified": [
+    0,
+    1
+  ],
   "missing_taxon_ids": [
     999999999
-  ]
+  ],
   "reads_extracted_per_taxon": {
     "0": 745591,
     "1": 1646
@@ -173,6 +176,20 @@ Use `--summary` to get summary statistics (output to stdout on completion)
   "kractor_version": "3.1.0"
 }
 ```
+
+Fields:
+
+- `taxons_identified`: Taxon IDs found in the Kraken report/output based on the requested taxids (includes
+  parents/children if used).
+- `missing_taxon_ids`: Requested taxon IDs that were not found in the Kraken report.
+- `reads_extracted_per_taxon`: Number of reads extracted per identified taxon ID (0 indicates no direct assignments, but
+  present due to children/parents).
+- `total_reads_in`: Total reads parsed from the input file(s).
+- `total_reads_out`: Total reads written to the output file(s).
+- `proportion_extracted`: `total_reads_out / total_reads_in`.
+- `input_format`: `single` or `paired` input mode.
+- `output_format`: `fastq` or `fasta`, depending on `--output-fasta`.
+- `kractor_version`: Version of kractor that produced the summary.
 
 ### Arguments:
 
