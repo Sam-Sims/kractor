@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] - 2026-01-26
+
+### Changed
+
+- Summary output now lists identified taxon IDs in `taxons_identified` (replacing `total_taxon_count`)
+- Summary output now includes zero entries for identified taxa with no direct assignments in `reads_extracted_per_taxon`
+
 ## [3.1.0] - 2025-12-12
 
 ### Added
@@ -19,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Kraken report/output parsing errors now include the line number and o line for easier debugging.
+
+## [4.0.0] - 2026-01-26
+
+### Changed
+
+- Summary output now lists identified taxon IDs in `taxons_identified` (replacing `total_taxon_count`) and includes zero
+  entries for identified taxa with no direct assignments in `reads_extracted_per_taxon`.
 
 ## [3.0.1] - 2025-10-16
 
