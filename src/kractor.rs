@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 struct Summary {
-    total_taxon_count: usize,
+    taxons_identified: Vec<i32>,
     reads_extracted_per_taxon: FxHashMap<i32, usize>,
     total_reads_in: usize,
     total_reads_out: usize,
@@ -88,6 +88,7 @@ impl Kractor {
     fn process_reads(&mut self) -> Result<()> {
         let paired = self.args.input.len() == 2;
         let input_format = if paired { "paired" } else { "single" };
+        let reads_extracted_per_taxon = self.get_reads_extracted_per_taxon();
 
         if paired {
             let ((reads_parsed1, reads_output1), (reads_parsed2, reads_output2)) =
@@ -105,8 +106,8 @@ impl Kractor {
             let reads_out = reads_output1 + reads_output2;
 
             self.summary = Some(Summary {
-                total_taxon_count: self.taxon_ids.len(),
-                reads_extracted_per_taxon: self.reads_per_taxon.clone(),
+                taxons_identified: self.taxon_ids.clone(),
+                reads_extracted_per_taxon: reads_extracted_per_taxon.clone(),
                 total_reads_in: reads_in,
                 total_reads_out: reads_out,
                 proportion_extracted: reads_out as f64 / reads_in as f64,
@@ -133,8 +134,8 @@ impl Kractor {
             let reads_out = reads_output1;
 
             self.summary = Some(Summary {
-                total_taxon_count: self.taxon_ids.len(),
-                reads_extracted_per_taxon: self.reads_per_taxon.clone(),
+                taxons_identified: self.taxon_ids.clone(),
+                reads_extracted_per_taxon,
                 missing_taxon_ids: self.missing_taxon_ids.clone(),
                 total_reads_in: reads_in,
                 total_reads_out: reads_out,
@@ -160,6 +161,14 @@ impl Kractor {
             }
         }
         Ok(())
+    }
+
+    fn get_reads_extracted_per_taxon(&self) -> FxHashMap<i32, usize> {
+        let mut reads_extracted_per_taxon = self.reads_per_taxon.clone();
+        for taxon_id in &self.taxon_ids {
+            reads_extracted_per_taxon.entry(*taxon_id).or_insert(0);
+        }
+        reads_extracted_per_taxon
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -235,5 +244,34 @@ mod tests {
         };
         let kractor = Kractor::new(args);
         assert!(kractor.validate_outputs().is_err());
+    }
+
+    #[test]
+    fn test_get_reads_extracted_per_taxon() {
+        let input_files = vec![PathBuf::from("input.fastq")];
+        let args = Cli {
+            input: input_files,
+            output: vec![PathBuf::from("output.fastq")],
+            kraken: PathBuf::from("kraken_output.txt"),
+            report: None,
+            taxid: vec![2901879, 227984],
+            output_type: None,
+            compression_level: niffler::Level::One,
+            parents: false,
+            children: false,
+            exclude: false,
+            output_fasta: false,
+            summary: false,
+            no_report_header_detect: false,
+            verbose: false,
+        };
+        let mut kractor = Kractor::new(args);
+        kractor.taxon_ids = vec![2901879, 227984];
+        kractor.reads_per_taxon.insert(227984, 257);
+
+        let reads_extracted_per_taxon = kractor.get_reads_extracted_per_taxon();
+
+        assert_eq!(reads_extracted_per_taxon.get(&2901879), Some(&0));
+        assert_eq!(reads_extracted_per_taxon.get(&227984), Some(&257));
     }
 }
