@@ -20,6 +20,7 @@ struct Summary {
     missing_taxon_ids: Vec<i32>,
 }
 
+
 pub struct Kractor {
     args: Cli,
     taxon_ids: Vec<i32>,
@@ -91,15 +92,19 @@ impl Kractor {
         let reads_extracted_per_taxon = self.get_reads_extracted_per_taxon();
 
         if paired {
-            let ((reads_parsed1, reads_output1), (reads_parsed2, reads_output2)) =
-                process_paired_end(
-                    &self.reads_to_save,
-                    &self.args.input,
-                    &self.args.output,
-                    self.args.output_type,
-                    self.args.compression_level,
-                    self.args.output_fasta,
-                )?;
+            let (
+                (reads_parsed1, reads_output1),
+                (reads_parsed2, reads_output2),
+                _input_sequence_format,
+                output_sequence_format,
+            ) = process_paired_end(
+                &self.reads_to_save,
+                &self.args.input,
+                &self.args.output,
+                self.args.output_type,
+                self.args.compression_level,
+                self.args.output_format,
+            )?;
 
             let reads_in = reads_parsed1 + reads_parsed2;
 
@@ -112,23 +117,20 @@ impl Kractor {
                 total_reads_out: reads_out,
                 proportion_extracted: reads_out as f64 / reads_in as f64,
                 input_format: input_format.to_string(),
-                output_format: if self.args.output_fasta {
-                    "fasta".to_string()
-                } else {
-                    "fastq".to_string()
-                },
+                output_format: output_sequence_format.to_string(),
                 kractor_version: env!("CARGO_PKG_VERSION").to_string(),
                 missing_taxon_ids: self.missing_taxon_ids.clone(),
             });
         } else {
-            let (reads_parsed1, reads_output1) = process_single_end(
-                &self.reads_to_save,
-                &self.args.input,
-                &self.args.output,
-                self.args.output_type,
-                self.args.compression_level,
-                self.args.output_fasta,
-            )?;
+            let (reads_parsed1, reads_output1, _input_sequence_format, output_sequence_format) =
+                process_single_end(
+                    &self.reads_to_save,
+                    &self.args.input,
+                    &self.args.output,
+                    self.args.output_type,
+                    self.args.compression_level,
+                    self.args.output_format,
+                )?;
 
             let reads_in = reads_parsed1;
             let reads_out = reads_output1;
@@ -141,11 +143,7 @@ impl Kractor {
                 total_reads_out: reads_out,
                 proportion_extracted: reads_out as f64 / reads_in as f64,
                 input_format: input_format.to_string(),
-                output_format: if self.args.output_fasta {
-                    "fasta".to_string()
-                } else {
-                    "fastq".to_string()
-                },
+                output_format: output_sequence_format.to_string(),
                 kractor_version: env!("CARGO_PKG_VERSION").to_string(),
             });
         }

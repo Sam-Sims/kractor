@@ -14,6 +14,15 @@ pub enum FastxFormat {
     Fastq,
 }
 
+impl std::fmt::Display for FastxFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FastxFormat::Fasta => f.write_str("fasta"),
+            FastxFormat::Fastq => f.write_str("fastq"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FastxRecord {
     pub id: Vec<u8>,
