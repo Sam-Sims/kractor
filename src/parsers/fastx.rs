@@ -55,7 +55,7 @@ pub fn parse_fastx(
 
         let record_id = record.id();
         let read_id = read_id(record_id);
-        if reads_to_save.contains(&read_id.to_vec()) {
+        if reads_to_save.contains(read_id) {
             tx.send(FastxRecord {
                 id: record_id.to_vec(),
                 seq: record.seq().into_owned(),
