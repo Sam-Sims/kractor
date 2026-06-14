@@ -68,10 +68,10 @@ fn process_kraken_output_line(kraken_output: &str) -> Result<KrakenRecord> {
     let taxon_id = fields
         .next()
         .ok_or_else(|| eyre!("Missing taxon ID field"))?;
-    fields
+    let _length = fields
         .next()
         .ok_or_else(|| eyre!("Missing length field in the kraken output file"))?;
-    fields
+    let _lca_map = fields
         .next()
         .ok_or_else(|| eyre!("Missing LCA map in the kraken output file"))?;
 
@@ -148,6 +148,7 @@ fn process_kraken_report_line(kraken_report: &str) -> Result<KrakenReportRecord>
     let name_field = fields
         .next()
         .ok_or_else(|| eyre!("Missing taxon name field in the kraken report file"))?;
+
     if fields.next().is_none() {
         let percent = percent_field
             .trim()
@@ -190,17 +191,14 @@ fn process_kraken_report_line(kraken_report: &str) -> Result<KrakenReportRecord>
 }
 
 fn should_skip_header_line(line: &str) -> bool {
-    let fields: Vec<&str> = line.split('\t').collect();
-    if fields.len() != 6 {
-        return false;
-    }
+    let fields = line.split('\t');
 
-    let all_string = fields.iter().all(|field| {
-        let trimmed = field.trim();
-        trimmed.is_empty() || (trimmed.parse::<f32>().is_err() && trimmed.parse::<i32>().is_err())
-    });
-
-    all_string
+    fields.clone().count() == 6
+        && fields.into_iter().all(|field| {
+            let trimmed = field.trim();
+            trimmed.is_empty()
+                || (trimmed.parse::<f32>().is_err() && trimmed.parse::<i32>().is_err())
+        })
 }
 
 pub fn build_tree_from_kraken_report(
@@ -298,7 +296,9 @@ pub fn extract_parents(
 ) -> Result<Vec<i32>> {
     // Backtracking traversal from the given taxon_id to the root
 
-    let &start_index = taxon_map.get(&taxon_id).unwrap();
+    let &start_index = taxon_map
+        .get(&taxon_id)
+        .ok_or_else(|| eyre!("taxon ID {taxon_id} is not present in the tree"))?;
 
     let mut parents = Vec::new();
     parents.push(taxon_id);
