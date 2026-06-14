@@ -280,6 +280,78 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_fastq_matches_id_before_whitespace() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.fastq");
+        let test_data =
+            b"@read1 some description\nAAAA\n+\n!!!!\n@read2 another description\nGGGG\n+\n!!!!\n";
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(test_data).unwrap();
+        let mut reads_to_save = FxHashSet::default();
+        reads_to_save.insert(b"read1".to_vec());
+        let (tx, rx) = crossbeam::channel::unbounded();
+        let (read_count, input_format) = parse_fastx(&file_path, &reads_to_save, &tx).unwrap();
+        drop(tx);
+        let results: Vec<FastxRecord> = rx.iter().collect();
+
+        assert_eq!(read_count, 2);
+        assert_eq!(input_format, FastxFormat::Fastq);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, b"read1 some description");
+        assert_eq!(results[0].seq, b"AAAA");
+        assert_eq!(results[0].qual.as_deref(), Some(&b"!!!!"[..]));
+    }
+
+    #[test]
+    fn test_parse_fasta_with_matches() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.fasta");
+        let test_data = b">read1 some description\nAAAA\n>read2 another description\nGGGG\n";
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(test_data).unwrap();
+        let mut reads_to_save = FxHashSet::default();
+        reads_to_save.insert(b"read1".to_vec());
+        let (tx, rx) = crossbeam::channel::unbounded();
+        let (read_count, input_format) = parse_fastx(&file_path, &reads_to_save, &tx).unwrap();
+        drop(tx);
+        let results: Vec<FastxRecord> = rx.iter().collect();
+
+        assert_eq!(read_count, 2);
+        assert_eq!(input_format, FastxFormat::Fasta);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, b"read1 some description");
+        assert_eq!(results[0].seq, b"AAAA");
+        assert_eq!(results[0].qual, None);
+    }
+
+    #[test]
+    fn test_detect_fastx_format() {
+        let dir = tempdir().unwrap();
+        let fasta_path = dir.path().join("test.fasta");
+        let fastq_path = dir.path().join("test.fastq");
+        let empty_path = dir.path().join("empty.fastq");
+        File::create(&fasta_path)
+            .unwrap()
+            .write_all(b">read1\nAAAA\n")
+            .unwrap();
+        File::create(&fastq_path)
+            .unwrap()
+            .write_all(b"@read1\nAAAA\n+\n!!!!\n")
+            .unwrap();
+        File::create(&empty_path).unwrap();
+
+        assert_eq!(
+            detect_fastx_format(&fasta_path).unwrap(),
+            FastxFormat::Fasta
+        );
+        assert_eq!(
+            detect_fastx_format(&fastq_path).unwrap(),
+            FastxFormat::Fastq
+        );
+        assert!(detect_fastx_format(&empty_path).is_err());
+    }
+
+    #[test]
     fn test_parse_fastq_with_no_matches() {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("test.fastq");

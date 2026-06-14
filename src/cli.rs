@@ -11,7 +11,7 @@ pub enum OutputFormat {
 #[derive(Parser, Debug)]
 #[command(
     version,
-    about = "Extract reads from a FASTQ file based on taxonomic classification via Kraken2.",
+    about = "Extract reads from a FASTQ or FASTA file based on taxonomic classification via Kraken2.",
     author = "Sam Sims"
 )]
 pub struct Cli {
@@ -36,7 +36,7 @@ pub struct Cli {
     /// Include all child taxon IDs in the output. Requires a Kraken2 report file.
     #[arg(short = 'c', long, action)]
     pub children: bool,
-    /// Compression format for output files (gz, bz2). Overides the inferred format.
+    /// Compression format for output files (gz, bz2). Overrides the inferred format.
     #[arg(long = "compression-format", value_parser(validate_compression))]
     pub output_type: Option<niffler::compression::Format>,
     /// Compression level (1-9).

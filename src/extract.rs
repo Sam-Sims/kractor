@@ -329,6 +329,71 @@ mod tests {
     }
 
     #[test]
+    fn test_process_single_end_fasta_auto() {
+        let dir = tempdir().unwrap();
+        let input_path = dir.path().join("input.fasta");
+        let output_path = dir.path().join("output.fasta");
+        let test_data = ">read1 some description\nAAAA\n>read2 another description\nGGGG\n";
+        let mut file = File::create(&input_path).unwrap();
+        file.write_all(test_data.as_bytes()).unwrap();
+        let mut reads_to_save = FxHashSet::default();
+        reads_to_save.insert(b"read1".to_vec());
+        let input = vec![input_path];
+        let output = vec![output_path.clone()];
+        let (reads_parsed, reads_output, input_format, output_format) = process_single_end(
+            &reads_to_save,
+            &input,
+            &output,
+            Some(niffler::compression::Format::No),
+            niffler::Level::One,
+            OutputFormat::Auto,
+        )
+        .unwrap();
+        let file_content = std::fs::read_to_string(output_path).unwrap();
+
+        assert_eq!(reads_output, 1);
+        assert_eq!(reads_parsed, 2);
+        assert_eq!(input_format, FastxFormat::Fasta);
+        assert_eq!(output_format, FastxFormat::Fasta);
+        assert!(file_content.contains(">read1 some description"));
+        assert!(file_content.contains("AAAA"));
+        assert!(!file_content.contains(">read2"));
+        assert!(!file_content.contains("+"));
+    }
+
+    #[test]
+    fn test_process_single_end_fasta_forced_fastq() {
+        let dir = tempdir().unwrap();
+        let input_path = dir.path().join("input.fasta");
+        let output_path = dir.path().join("output.fastq");
+        let test_data = ">read1\nAAAA\n";
+        let mut file = File::create(&input_path).unwrap();
+        file.write_all(test_data.as_bytes()).unwrap();
+        let mut reads_to_save = FxHashSet::default();
+        reads_to_save.insert(b"read1".to_vec());
+        let input = vec![input_path];
+        let output = vec![output_path.clone()];
+        let (reads_parsed, reads_output, input_format, output_format) = process_single_end(
+            &reads_to_save,
+            &input,
+            &output,
+            Some(niffler::compression::Format::No),
+            niffler::Level::One,
+            OutputFormat::Fastq,
+        )
+        .unwrap();
+        let file_content = std::fs::read_to_string(output_path).unwrap();
+
+        assert_eq!(reads_output, 1);
+        assert_eq!(reads_parsed, 1);
+        assert_eq!(input_format, FastxFormat::Fasta);
+        assert_eq!(output_format, FastxFormat::Fastq);
+        assert!(file_content.contains("@read1"));
+        assert!(file_content.contains("AAAA"));
+        assert!(file_content.contains("+"));
+    }
+
+    #[test]
     fn test_process_single_end_not_found() {
         let nonexistent_path = PathBuf::from("idontexist.fastq");
         let output_path = PathBuf::from("output.fastq");
@@ -440,6 +505,36 @@ mod tests {
         assert!(!file_content1.contains("@read2"));
         assert!(file_content2.contains(">read1"));
         assert!(file_content2.contains("TTTT"));
+    }
+
+    #[test]
+    fn test_process_paired_end_rejects_fasta_input() {
+        let dir = tempdir().unwrap();
+        let input_path1 = dir.path().join("input1.fasta");
+        let input_path2 = dir.path().join("input2.fastq");
+        let output_path1 = dir.path().join("output1.fastq");
+        let output_path2 = dir.path().join("output2.fastq");
+        let test_data1 = ">read1\nAAAA\n";
+        let test_data2 = "@read1\nTTTT\n+\n!!!!\n";
+        let mut file1 = File::create(&input_path1).unwrap();
+        file1.write_all(test_data1.as_bytes()).unwrap();
+        let mut file2 = File::create(&input_path2).unwrap();
+        file2.write_all(test_data2.as_bytes()).unwrap();
+        let mut reads_to_save = FxHashSet::default();
+        reads_to_save.insert(b"read1".to_vec());
+        let input = vec![input_path1, input_path2];
+        let output = vec![output_path1, output_path2];
+
+        let result = process_paired_end(
+            &reads_to_save,
+            &input,
+            &output,
+            Some(niffler::compression::Format::No),
+            niffler::Level::One,
+            OutputFormat::Auto,
+        );
+
+        assert!(result.is_err());
     }
 
     fn create_test_kraken_report(dir: &tempfile::TempDir) -> PathBuf {
