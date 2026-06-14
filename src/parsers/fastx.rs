@@ -13,6 +13,15 @@ pub enum FastxFormat {
     Fastq,
 }
 
+impl From<needletail::parser::Format> for FastxFormat {
+    fn from(format: needletail::parser::Format) -> Self {
+        match format {
+            needletail::parser::Format::Fasta => Self::Fasta,
+            needletail::parser::Format::Fastq => Self::Fastq,
+        }
+    }
+}
+
 impl std::fmt::Display for FastxFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -47,11 +56,7 @@ pub fn parse_fastx(
         let record = result
             .wrap_err_with(|| format!("Error reading FASTX record at position {num_reads}"))?;
 
-        let record_format = match record.format() {
-            needletail::parser::Format::Fasta => FastxFormat::Fasta,
-            needletail::parser::Format::Fastq => FastxFormat::Fastq,
-        };
-        input_format.get_or_insert(record_format);
+        input_format.get_or_insert(record.format().into());
 
         let record_id = record.id();
         let read_id = read_id(record_id);
@@ -101,10 +106,7 @@ pub fn detect_fastx_format(file_path: &Path) -> Result<FastxFormat> {
             )
         })?;
 
-    match record.format() {
-        needletail::parser::Format::Fasta => Ok(FastxFormat::Fasta),
-        needletail::parser::Format::Fastq => Ok(FastxFormat::Fastq),
-    }
+    Ok(record.format().into())
 }
 
 pub fn resolve_output_format(input: FastxFormat, requested: OutputFormat) -> FastxFormat {
