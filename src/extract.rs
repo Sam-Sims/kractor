@@ -77,84 +77,100 @@ pub fn process_paired_end(
     output: &[PathBuf],
     compression_type: Option<niffler::Format>,
     compression_level: niffler::Level,
-    fasta: bool,
-) -> Result<((usize, usize), (usize, usize))> {
-    thread::scope(|scope| -> Result<((usize, usize), (usize, usize))> {
-        let (tx1, rx1) = channel::unbounded::<fastq::Record>();
-        let (tx2, rx2) = channel::unbounded::<fastq::Record>();
+    requested_output_format: OutputFormat,
+) -> Result<((usize, usize), (usize, usize), FastxFormat, FastxFormat)> {
+    let input_format1 = detect_fastx_format(&input[0])
+        .wrap_err_with(|| format!("Failed to detect first input format: {}", input[0].display()))?;
+    let input_format2 = detect_fastx_format(&input[1])
+        .wrap_err_with(|| format!("Failed to detect second input format: {}", input[1].display()))?;
 
-        let reader1 = scope.spawn(|_| {
-            let result = parse_fastq(&input[0], reads_to_save, &tx1);
-            drop(tx1);
-            result.wrap_err_with(|| {
-                format!("Failed to parse first input file: {}", input[0].display())
-            })
-        });
+    if input_format1 == FastxFormat::Fasta || input_format2 == FastxFormat::Fasta {
+        bail!("FASTA input is only supported for single-end extraction, paired-end input must be FASTQ");
+    }
 
-        let reader2 = scope.spawn(|_| {
-            let result = parse_fastq(&input[1], reads_to_save, &tx2);
-            drop(tx2);
-            result.wrap_err_with(|| {
-                format!("Failed to parse second input file: {}", input[1].display())
-            })
-        });
+    let input_format = FastxFormat::Fastq;
+    let output_format = resolve_output_format(input_format, requested_output_format);
 
-        let writer1 = scope.spawn(|_| {
-            if fasta {
-                write_output_fasta(rx1, &output[0]).wrap_err_with(|| {
+    let ((reads1, reads2), (out1, out2)) = thread::scope(
+        |scope| -> Result<((usize, usize), (usize, usize))> {
+            let (tx1, rx1) = channel::unbounded::<FastxRecord>();
+            let (tx2, rx2) = channel::unbounded::<FastxRecord>();
+
+            let reader1 = scope.spawn(|_| {
+                let result = parse_fastx(&input[0], reads_to_save, &tx1).map(|(count, _)| count);
+                drop(tx1);
+                result.wrap_err_with(|| {
+                    format!("Failed to parse first input file: {}", input[0].display())
+                })
+            });
+
+            let reader2 = scope.spawn(|_| {
+                let result = parse_fastx(&input[1], reads_to_save, &tx2).map(|(count, _)| count);
+                drop(tx2);
+                result.wrap_err_with(|| {
+                    format!("Failed to parse second input file: {}", input[1].display())
+                })
+            });
+
+            let writer1 = scope.spawn(|_| {
+                write_output_fastx(
+                    rx1,
+                    &output[0],
+                    output_format,
+                    compression_type,
+                    compression_level,
+                )
+                .wrap_err_with(|| {
                     format!(
-                        "Failed to write FASTA output to first file: {}",
+                        "Failed to write output to first file: {}",
                         output[0].display()
                     )
                 })
-            } else {
-                write_output_fastq(rx1, &output[0], compression_type, compression_level)
-                    .wrap_err_with(|| {
-                        format!(
-                            "Failed to write FASTQ output to first file: {}",
-                            output[0].display()
-                        )
-                    })
-            }
-        });
+            });
 
-        let writer2 = scope.spawn(|_| {
-            if fasta {
-                write_output_fasta(rx2, &output[1]).wrap_err_with(|| {
+            let writer2 = scope.spawn(|_| {
+                write_output_fastx(
+                    rx2,
+                    &output[1],
+                    output_format,
+                    compression_type,
+                    compression_level,
+                )
+                .wrap_err_with(|| {
                     format!(
-                        "Failed to write FASTA output to second file: {}",
+                        "Failed to write output to second file: {}",
                         output[1].display()
                     )
                 })
-            } else {
-                write_output_fastq(rx2, &output[1], compression_type, compression_level)
-                    .wrap_err_with(|| {
-                        format!(
-                            "Failed to write FASTQ output to second file: {}",
-                            output[1].display()
-                        )
-                    })
-            }
-        });
+            });
 
-        let total_parsed1 = reader1
-            .join()
-            .map_err(|_| eyre!("Reader thread for file1 panicked"))??;
-        let total_parsed2 = reader2
-            .join()
-            .map_err(|_| eyre!("Reader thread for file2 panicked"))??;
-        let total_reads_output1 = writer1
-            .join()
-            .map_err(|_| eyre!("Writer thread for file1 panicked"))??;
-        let total_reads_output2 = writer2
-            .join()
-            .map_err(|_| eyre!("Writer thread for file2 panicked"))??;
-        Ok((
-            (total_parsed1, total_reads_output1),
-            (total_parsed2, total_reads_output2),
-        ))
-    })
-    .map_err(|_| eyre!("Thread communication error"))?
+            let total_parsed1 = reader1
+                .join()
+                .map_err(|_| eyre!("Reader thread for file1 panicked"))??;
+            let total_parsed2 = reader2
+                .join()
+                .map_err(|_| eyre!("Reader thread for file2 panicked"))??;
+            let total_reads_output1 = writer1
+                .join()
+                .map_err(|_| eyre!("Writer thread for file1 panicked"))??;
+            let total_reads_output2 = writer2
+                .join()
+                .map_err(|_| eyre!("Writer thread for file2 panicked"))??;
+
+            Ok((
+                (total_parsed1, total_parsed2),
+                (total_reads_output1, total_reads_output2),
+            ))
+        },
+    )
+    .map_err(|_| eyre!("Thread communication error"))??;
+
+    Ok((
+        (reads1, out1),
+        (reads2, out2),
+        input_format,
+        output_format,
+    ))
 }
 
 pub fn collect_taxons_to_save(

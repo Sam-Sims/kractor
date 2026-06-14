@@ -36,6 +36,21 @@ fn read_id(record_id: &[u8]) -> &[u8] {
         .unwrap_or(record_id)
 }
 
+pub fn detect_fastx_format(file_path: &PathBuf) -> Result<FastxFormat> {
+    let mut fastx_reader = needletail::parse_fastx_file(file_path)
+        .wrap_err_with(|| format!("Failed to parse FASTX file: {}", file_path.display()))?;
+
+    let record = fastx_reader
+        .next()
+        .ok_or_else(|| eyre!("No FASTA or FASTQ records found in input file: {}", file_path.display()))?
+        .wrap_err_with(|| format!("Error reading first FASTX record from {}", file_path.display()))?;
+
+    match record.format() {
+        needletail::parser::Format::Fasta => Ok(FastxFormat::Fasta),
+        needletail::parser::Format::Fastq => Ok(FastxFormat::Fastq),
+    }
+}
+
 pub fn parse_fastx(
     file_path: &PathBuf,
     reads_to_save: &FxHashSet<Vec<u8>>,
