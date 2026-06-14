@@ -10,13 +10,13 @@
 
 **kra**ken extr**actor**
 
-Kractor extracts reads from FASTQ or FASTA `[.gz/.bz2]` files using taxonomic classifications obtained via Kraken2.
-It supports single or paired-end reads, can optionally include taxonomic parents or children, and uses minimal memory (~
-4.5 MB for a 17 GB FASTQ file).
+Kractor extracts reads from FASTQ or FASTA files (optionally `.gz`/`.bz2` compressed) using taxonomic classifications
+from Kraken2. It supports single- and paired-end reads, can optionally include taxonomic parents or children, and uses
+minimal memory (~4.5 MB for a 17 GB FASTQ file).
 
-The end result is a FASTQ or FASTA file containing all reads classified as the specified taxon(s).
+The output is a FASTQ or FASTA file containing all reads classified as the specified taxa.
 
-Kractor significantly enhances processing speed compared to KrakenTools for both paired and unpaired reads.
+Kractor offers a significant speed-up over KrakenTools for both paired and unpaired reads.
 
 Performance vs KrakenTools:
 
