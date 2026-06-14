@@ -1,5 +1,12 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum OutputFormat {
+    Auto,
+    Fasta,
+    Fastq,
+}
 
 #[derive(Parser, Debug)]
 #[command(
@@ -42,9 +49,9 @@ pub struct Cli {
     /// Exclude specified taxon IDs from the output.
     #[arg(long)]
     pub exclude: bool,
-    /// Output results in FASTA format
-    #[arg(long, action)]
-    pub output_fasta: bool,
+    /// Output sequence format (auto, fasta, fastq).
+    #[arg(long = "output-format", value_enum, default_value = "auto")]
+    pub output_format: OutputFormat,
     /// Enable a JSON summary output written to stdout.
     #[arg(long = "summary")]
     pub summary: bool,
@@ -64,6 +71,7 @@ fn validate_compression(s: &str) -> Result<niffler::compression::Format, String>
         _ => Err(format!("Unknown compression type: {s}")),
     }
 }
+
 
 fn validate_compression_level(s: &str) -> Result<niffler::Level, String> {
     match s.parse::<u32>() {

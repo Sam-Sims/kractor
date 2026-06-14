@@ -1,3 +1,4 @@
+use crate::cli::OutputFormat;
 use color_eyre::eyre::{Context, Result};
 use crossbeam::channel::{Receiver, Sender};
 use fxhash::FxHashSet;
@@ -9,6 +10,21 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use std::{fs, io};
 
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FastxFormat {
+    Fasta,
+    Fastq,
+}
+
+
+pub fn resolve_output_format(input: FastxFormat, requested: OutputFormat) -> FastxFormat {
+    match requested {
+        OutputFormat::Auto => input,
+        OutputFormat::Fasta => FastxFormat::Fasta,
+        OutputFormat::Fastq => FastxFormat::Fastq,
+    }
+}
 pub fn parse_fastq(
     file_path: &PathBuf,
     reads_to_save: &FxHashSet<Vec<u8>>,
