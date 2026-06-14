@@ -1,6 +1,6 @@
 [package]
 name = "kractor"
-version = "4.0.0"
+version = "5.0.0"
 edition = "2024"
 rust-version = "1.88"
 authors = ["Samuel Sims"]
