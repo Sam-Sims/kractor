@@ -1,9 +1,9 @@
 use chrono::Local;
 use clap::Parser;
-use color_eyre::eyre::bail;
 use color_eyre::Result;
-use env_logger::fmt::Color;
+use color_eyre::eyre::bail;
 use env_logger::Builder;
+use env_logger::fmt::Color;
 use log::LevelFilter;
 use std::io::Write;
 

@@ -1,12 +1,12 @@
 use crate::cli::OutputFormat;
 use crate::parsers::fastx::{
-    detect_fastx_format, parse_fastx, resolve_output_format, write_output_fastx, FastxFormat,
-    FastxRecord,
+    FastxFormat, FastxRecord, detect_fastx_format, parse_fastx, resolve_output_format,
+    write_output_fastx,
 };
 use crate::parsers::kraken::{
-    build_tree_from_kraken_report, extract_children, extract_parents, ProcessedKrakenTree,
+    ProcessedKrakenTree, build_tree_from_kraken_report, extract_children, extract_parents,
 };
-use color_eyre::{eyre::bail, eyre::eyre, eyre::WrapErr, Result};
+use color_eyre::{Result, eyre::WrapErr, eyre::bail, eyre::eyre};
 use crossbeam::{channel, thread};
 use fxhash::FxHashSet;
 use log::{debug, info, warn};
@@ -79,10 +79,18 @@ pub fn process_paired_end(
     compression_level: niffler::Level,
     requested_output_format: OutputFormat,
 ) -> Result<((usize, usize), (usize, usize), FastxFormat, FastxFormat)> {
-    let input_format1 = detect_fastx_format(&input[0])
-        .wrap_err_with(|| format!("Failed to detect first input format: {}", input[0].display()))?;
-    let input_format2 = detect_fastx_format(&input[1])
-        .wrap_err_with(|| format!("Failed to detect second input format: {}", input[1].display()))?;
+    let input_format1 = detect_fastx_format(&input[0]).wrap_err_with(|| {
+        format!(
+            "Failed to detect first input format: {}",
+            input[0].display()
+        )
+    })?;
+    let input_format2 = detect_fastx_format(&input[1]).wrap_err_with(|| {
+        format!(
+            "Failed to detect second input format: {}",
+            input[1].display()
+        )
+    })?;
 
     if input_format1 == FastxFormat::Fasta || input_format2 == FastxFormat::Fasta {
         bail!("FASTA input is only supported for single-end extraction, paired-end input must be FASTQ");
@@ -91,8 +99,8 @@ pub fn process_paired_end(
     let input_format = FastxFormat::Fastq;
     let output_format = resolve_output_format(input_format, requested_output_format);
 
-    let ((reads1, reads2), (out1, out2)) = thread::scope(
-        |scope| -> Result<((usize, usize), (usize, usize))> {
+    let ((reads1, reads2), (out1, out2)) =
+        thread::scope(|scope| -> Result<((usize, usize), (usize, usize))> {
             let (tx1, rx1) = channel::unbounded::<FastxRecord>();
             let (tx2, rx2) = channel::unbounded::<FastxRecord>();
 
@@ -161,16 +169,10 @@ pub fn process_paired_end(
                 (total_parsed1, total_parsed2),
                 (total_reads_output1, total_reads_output2),
             ))
-        },
-    )
-    .map_err(|_| eyre!("Thread communication error"))??;
+        })
+        .map_err(|_| eyre!("Thread communication error"))??;
 
-    Ok((
-        (reads1, out1),
-        (reads2, out2),
-        input_format,
-        output_format,
-    ))
+    Ok(((reads1, out1), (reads2, out2), input_format, output_format))
 }
 
 pub fn collect_taxons_to_save(
@@ -274,18 +276,21 @@ mod tests {
         reads_to_save.insert(b"read1".to_vec());
         let input = vec![input_path];
         let output = vec![output_path.clone()];
-        let (reads_parsed, reads_output) = process_single_end(
+        let (reads_parsed, reads_output, input_format, output_format) = process_single_end(
             &reads_to_save,
             &input,
             &output,
             Some(niffler::compression::Format::No),
             niffler::Level::One,
-            false,
+            OutputFormat::Auto,
         )
         .unwrap();
         let file_content = std::fs::read_to_string(output_path).unwrap();
 
         assert_eq!(reads_output, 1);
+        assert_eq!(reads_parsed, 2);
+        assert_eq!(input_format, FastxFormat::Fastq);
+        assert_eq!(output_format, FastxFormat::Fastq);
         assert!(file_content.contains("@read1"));
         assert!(file_content.contains("AAAA"));
         assert!(!file_content.contains("@read2"));
@@ -303,18 +308,21 @@ mod tests {
         reads_to_save.insert(b"read1".to_vec());
         let input = vec![input_path];
         let output = vec![output_path.clone()];
-        let (reads_parsed, reads_output) = process_single_end(
+        let (reads_parsed, reads_output, input_format, output_format) = process_single_end(
             &reads_to_save,
             &input,
             &output,
             Some(niffler::compression::Format::No),
             niffler::Level::One,
-            true,
+            OutputFormat::Fasta,
         )
         .unwrap();
         let file_content = std::fs::read_to_string(output_path).unwrap();
 
         assert_eq!(reads_output, 1);
+        assert_eq!(reads_parsed, 2);
+        assert_eq!(input_format, FastxFormat::Fastq);
+        assert_eq!(output_format, FastxFormat::Fasta);
         assert!(file_content.contains(">read1"));
         assert!(file_content.contains("AAAA"));
         assert!(!file_content.contains("@read2"));
@@ -334,7 +342,7 @@ mod tests {
             &output,
             None,
             niffler::Level::One,
-            false,
+            OutputFormat::Auto,
         );
 
         assert!(result.is_err());
@@ -357,19 +365,28 @@ mod tests {
         reads_to_save.insert(b"read1".to_vec());
         let input = vec![input_path1, input_path2];
         let output = vec![output_path1.clone(), output_path2.clone()];
-        let ((reads_parsed1, reads_output1), (reads_parsed2, reads_output2)) = process_paired_end(
+        let (
+            (reads_parsed1, reads_output1),
+            (reads_parsed2, reads_output2),
+            input_format,
+            output_format,
+        ) = process_paired_end(
             &reads_to_save,
             &input,
             &output,
             Some(niffler::compression::Format::No),
             niffler::Level::One,
-            false,
+            OutputFormat::Auto,
         )
         .unwrap();
         let file_content1 = std::fs::read_to_string(output_path1).unwrap();
         let file_content2 = std::fs::read_to_string(output_path2).unwrap();
 
         assert_eq!(reads_output1, 1);
+        assert_eq!(reads_parsed1, 2);
+        assert_eq!(reads_parsed2, 2);
+        assert_eq!(input_format, FastxFormat::Fastq);
+        assert_eq!(output_format, FastxFormat::Fastq);
         assert_eq!(reads_output2, 1);
         assert!(file_content1.contains("@read1"));
         assert!(file_content1.contains("AAAA"));
@@ -395,19 +412,28 @@ mod tests {
         reads_to_save.insert(b"read1".to_vec());
         let input = vec![input_path1, input_path2];
         let output = vec![output_path1.clone(), output_path2.clone()];
-        let ((reads_parsed1, reads_output1), (reads_parsed2, reads_output2)) = process_paired_end(
+        let (
+            (reads_parsed1, reads_output1),
+            (reads_parsed2, reads_output2),
+            input_format,
+            output_format,
+        ) = process_paired_end(
             &reads_to_save,
             &input,
             &output,
             Some(niffler::compression::Format::No),
             niffler::Level::One,
-            true,
+            OutputFormat::Fasta,
         )
         .unwrap();
         let file_content1 = std::fs::read_to_string(output_path1).unwrap();
         let file_content2 = std::fs::read_to_string(output_path2).unwrap();
 
         assert_eq!(reads_output1, 1);
+        assert_eq!(reads_parsed1, 2);
+        assert_eq!(reads_parsed2, 2);
+        assert_eq!(input_format, FastxFormat::Fastq);
+        assert_eq!(output_format, FastxFormat::Fasta);
         assert_eq!(reads_output2, 1);
         assert!(file_content1.contains(">read1"));
         assert!(file_content1.contains("AAAA"));

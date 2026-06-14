@@ -1,8 +1,8 @@
 use crate::extract::{process_paired_end, process_single_end};
 use crate::parsers::kraken::ProcessedKrakenOutput;
-use crate::{extract, parsers, Cli};
-use color_eyre::eyre::{bail, ensure};
+use crate::{Cli, extract, parsers};
 use color_eyre::Result;
+use color_eyre::eyre::{bail, ensure};
 use fxhash::{FxHashMap, FxHashSet};
 use log::info;
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,6 @@ struct Summary {
     kractor_version: String,
     missing_taxon_ids: Vec<i32>,
 }
-
 
 pub struct Kractor {
     args: Cli,
@@ -40,6 +39,22 @@ impl Kractor {
             reads_per_taxon: FxHashMap::default(),
             summary: None,
         }
+    }
+
+    pub fn run(&mut self) -> Result<()> {
+        info!(
+            "Starting kractor at {}",
+            chrono::Local::now().format("%H:%M:%S")
+        );
+        self.validate_outputs()?;
+        self.collect_taxons()?;
+        info!("Processing Kraken2 output file");
+        self.process_kraken_output()?;
+        info!("Processing reads");
+        self.process_reads()?;
+        info!("Complete at {}", chrono::Local::now().format("%H:%M:%S"));
+        self.output_summary()?;
+        Ok(())
     }
 
     fn validate_outputs(&self) -> Result<()> {
@@ -152,11 +167,11 @@ impl Kractor {
     }
 
     fn output_summary(&self) -> Result<()> {
-        if let Some(summary) = &self.summary {
-            if self.args.summary {
-                let json = serde_json::to_string_pretty(summary)?;
-                println!("{json}");
-            }
+        if self.args.summary
+            && let Some(summary) = &self.summary
+        {
+            let json = serde_json::to_string_pretty(summary)?;
+            println!("{json}");
         }
         Ok(())
     }
@@ -168,22 +183,6 @@ impl Kractor {
         }
         reads_extracted_per_taxon
     }
-
-    pub fn run(&mut self) -> Result<()> {
-        info!(
-            "Starting kractor at {}",
-            chrono::Local::now().format("%H:%M:%S")
-        );
-        self.validate_outputs()?;
-        self.collect_taxons()?;
-        info!("Processing Kraken2 output file");
-        self.process_kraken_output()?;
-        info!("Processing reads");
-        self.process_reads()?;
-        info!("Complete at {}", chrono::Local::now().format("%H:%M:%S"));
-        self.output_summary()?;
-        Ok(())
-    }
 }
 
 #[cfg(test)]
@@ -192,6 +191,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+    use crate::cli::OutputFormat;
 
     #[test]
     fn test_output_doesnt_exist() {
@@ -209,7 +209,7 @@ mod tests {
             parents: false,
             children: false,
             exclude: false,
-            output_fasta: false,
+            output_format: OutputFormat::Auto,
             summary: false,
             no_report_header_detect: false,
             verbose: false,
@@ -235,7 +235,7 @@ mod tests {
             parents: false,
             children: false,
             exclude: false,
-            output_fasta: false,
+            output_format: OutputFormat::Auto,
             summary: false,
             no_report_header_detect: false,
             verbose: false,
@@ -258,7 +258,7 @@ mod tests {
             parents: false,
             children: false,
             exclude: false,
-            output_fasta: false,
+            output_format: OutputFormat::Auto,
             summary: false,
             no_report_header_detect: false,
             verbose: false,

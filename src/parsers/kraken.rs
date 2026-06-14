@@ -1,10 +1,10 @@
-use color_eyre::{eyre::bail, eyre::eyre, eyre::Context, Result};
+use color_eyre::{Result, eyre::Context, eyre::bail, eyre::eyre};
 use fxhash::{FxHashMap, FxHashSet};
 use log::{info, warn};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::Path;
 
 #[derive(Debug, Clone)]
 pub struct Tree {
@@ -96,7 +96,7 @@ fn process_kraken_output_line(kraken_output: &str) -> Result<KrakenRecord> {
 }
 
 pub fn process_kraken_output(
-    kraken_path: &PathBuf,
+    kraken_path: &Path,
     exclude: bool,
     taxon_ids_to_save: &[i32],
 ) -> Result<ProcessedKrakenOutput> {
@@ -209,7 +209,7 @@ fn should_skip_header_line(line: &str) -> bool {
 
 pub fn build_tree_from_kraken_report(
     taxon_to_save: &[i32],
-    report_path: &PathBuf,
+    report_path: &Path,
     detect_header: bool,
 ) -> Result<ProcessedKrakenTree> {
     info!("Building taxonomic tree from kraken report");
@@ -236,7 +236,9 @@ pub fn build_tree_from_kraken_report(
             Ok(record) => record,
             Err(err) => {
                 if detect_header && line_number == 1 && should_skip_header_line(&line) {
-                    warn!("The first line of the kraken report looks like a header and will be skipped. If you want to disable this behaviour use --no-header-detect");
+                    warn!(
+                        "The first line of the kraken report looks like a header and will be skipped. If you want to disable this behaviour use --no-header-detect"
+                    );
                     continue;
                 }
                 return Err(err).wrap_err_with(|| {
@@ -335,6 +337,7 @@ mod tests {
     use super::*;
     use std::fs::File;
     use std::io::Write;
+    use std::path::PathBuf;
     use tempfile::tempdir;
 
     // kraken output tests

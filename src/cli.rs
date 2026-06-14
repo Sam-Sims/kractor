@@ -72,7 +72,6 @@ fn validate_compression(s: &str) -> Result<niffler::compression::Format, String>
     }
 }
 
-
 fn validate_compression_level(s: &str) -> Result<niffler::Level, String> {
     match s.parse::<u32>() {
         Ok(1) => Ok(niffler::Level::One),

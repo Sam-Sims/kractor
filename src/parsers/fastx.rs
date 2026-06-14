@@ -1,12 +1,11 @@
 use crate::cli::OutputFormat;
-use color_eyre::eyre::{eyre, Context, Result};
+use color_eyre::eyre::{Context, Result, eyre};
 use crossbeam::channel::{Receiver, Sender};
 use fxhash::FxHashSet;
 use log::{debug, trace};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{Duration, Instant};
 use std::{fs, io};
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FastxFormat {
@@ -30,38 +29,8 @@ pub struct FastxRecord {
     pub qual: Option<Vec<u8>>,
 }
 
-
-pub fn resolve_output_format(input: FastxFormat, requested: OutputFormat) -> FastxFormat {
-    match requested {
-        OutputFormat::Auto => input,
-        OutputFormat::Fasta => FastxFormat::Fasta,
-        OutputFormat::Fastq => FastxFormat::Fastq,
-    }
-}
-fn read_id(record_id: &[u8]) -> &[u8] {
-    record_id
-        .split(|byte| byte.is_ascii_whitespace())
-        .next()
-        .unwrap_or(record_id)
-}
-
-pub fn detect_fastx_format(file_path: &PathBuf) -> Result<FastxFormat> {
-    let mut fastx_reader = needletail::parse_fastx_file(file_path)
-        .wrap_err_with(|| format!("Failed to parse FASTX file: {}", file_path.display()))?;
-
-    let record = fastx_reader
-        .next()
-        .ok_or_else(|| eyre!("No FASTA or FASTQ records found in input file: {}", file_path.display()))?
-        .wrap_err_with(|| format!("Error reading first FASTX record from {}", file_path.display()))?;
-
-    match record.format() {
-        needletail::parser::Format::Fasta => Ok(FastxFormat::Fasta),
-        needletail::parser::Format::Fastq => Ok(FastxFormat::Fastq),
-    }
-}
-
 pub fn parse_fastx(
-    file_path: &PathBuf,
+    file_path: &Path,
     reads_to_save: &FxHashSet<Vec<u8>>,
     tx: &Sender<FastxRecord>,
 ) -> Result<(usize, FastxFormat)> {
@@ -113,22 +82,42 @@ pub fn parse_fastx(
     Ok((num_reads, input_format))
 }
 
-fn infer_compression(file_path: &PathBuf) -> niffler::compression::Format {
-    let path = Path::new(file_path);
-    match path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext.to_ascii_lowercase())
-    {
-        Some(ref ext) if ext == "gz" => niffler::compression::Format::Gzip,
-        Some(ref ext) if ext == "bz2" => niffler::compression::Format::Bzip,
-        _ => niffler::compression::Format::No,
+pub fn detect_fastx_format(file_path: &Path) -> Result<FastxFormat> {
+    let mut fastx_reader = needletail::parse_fastx_file(file_path)
+        .wrap_err_with(|| format!("Failed to parse FASTX file: {}", file_path.display()))?;
+
+    let record = fastx_reader
+        .next()
+        .ok_or_else(|| {
+            eyre!(
+                "No FASTA or FASTQ records found in input file: {}",
+                file_path.display()
+            )
+        })?
+        .wrap_err_with(|| {
+            format!(
+                "Error reading first FASTX record from {}",
+                file_path.display()
+            )
+        })?;
+
+    match record.format() {
+        needletail::parser::Format::Fasta => Ok(FastxFormat::Fasta),
+        needletail::parser::Format::Fastq => Ok(FastxFormat::Fastq),
+    }
+}
+
+pub fn resolve_output_format(input: FastxFormat, requested: OutputFormat) -> FastxFormat {
+    match requested {
+        OutputFormat::Auto => input,
+        OutputFormat::Fasta => FastxFormat::Fasta,
+        OutputFormat::Fastq => FastxFormat::Fastq,
     }
 }
 
 pub fn write_output_fastx(
     rx: Receiver<FastxRecord>,
-    out_file: &PathBuf,
+    out_file: &Path,
     output_format: FastxFormat,
     output_type: Option<niffler::Format>,
     compression_level: niffler::Level,
@@ -146,12 +135,11 @@ pub fn write_output_fastx(
     debug!("Output compression level specified as: {compression_level:?}");
     debug!("Creating output file: {}", out_file.display());
 
-    if let Some(parent) = out_file.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).wrap_err_with(|| {
-                format!("Failed to create output directory: {}", parent.display())
-            })?;
-        }
+    if let Some(parent) = out_file.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)
+            .wrap_err_with(|| format!("Failed to create output directory: {}", parent.display()))?;
     }
 
     let out_file_handle = fs::File::create(out_file)
@@ -186,13 +174,40 @@ pub fn write_output_fastx(
     Ok(read_output_count)
 }
 
+fn read_id(record_id: &[u8]) -> &[u8] {
+    record_id
+        .split(|byte| byte.is_ascii_whitespace())
+        .next()
+        .unwrap_or(record_id)
+}
+
+fn infer_compression(file_path: &Path) -> niffler::compression::Format {
+    match file_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+    {
+        Some(ref ext) if ext == "gz" => niffler::compression::Format::Gzip,
+        Some(ref ext) if ext == "bz2" => niffler::compression::Format::Bzip,
+        _ => niffler::compression::Format::No,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use noodles::fastq;
     use std::fs::File;
-    use std::io::{Read, Write};
+    use std::io::{BufReader, Read, Write};
+    use std::path::PathBuf;
     use tempfile::tempdir;
+
+    fn fastx_record(id: &str, seq: &str, qual: Option<&str>) -> FastxRecord {
+        FastxRecord {
+            id: id.as_bytes().to_vec(),
+            seq: seq.as_bytes().to_vec(),
+            qual: qual.map(|value| value.as_bytes().to_vec()),
+        }
+    }
 
     #[test]
     fn test_infer_compression_gzip() {
@@ -245,15 +260,17 @@ mod tests {
         reads_to_save.insert(b"read1".to_vec());
         reads_to_save.insert(b"read3".to_vec());
         let (tx, rx) = crossbeam::channel::unbounded();
-        parse_fastq(&file_path, &reads_to_save, &tx).unwrap();
+        let (read_count, input_format) = parse_fastx(&file_path, &reads_to_save, &tx).unwrap();
         drop(tx);
-        let results: Vec<fastq::Record> = rx.iter().collect();
+        let results: Vec<FastxRecord> = rx.iter().collect();
 
+        assert_eq!(read_count, 3);
+        assert_eq!(input_format, FastxFormat::Fastq);
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0].name(), b"read1");
-        assert_eq!(results[1].name(), b"read3");
-        assert_eq!(results[0].sequence(), b"AAAA");
-        assert_eq!(results[1].sequence(), b"TTTT");
+        assert_eq!(results[0].id, b"read1");
+        assert_eq!(results[1].id, b"read3");
+        assert_eq!(results[0].seq, b"AAAA");
+        assert_eq!(results[1].seq, b"TTTT");
     }
 
     #[test]
@@ -267,10 +284,12 @@ mod tests {
         reads_to_save.insert(b"read4".to_vec());
         reads_to_save.insert(b"read5".to_vec());
         let (tx, rx) = crossbeam::channel::unbounded();
-        parse_fastq(&file_path, &reads_to_save, &tx).unwrap();
+        let (read_count, input_format) = parse_fastx(&file_path, &reads_to_save, &tx).unwrap();
         drop(tx);
-        let results: Vec<fastq::Record> = rx.iter().collect();
+        let results: Vec<FastxRecord> = rx.iter().collect();
 
+        assert_eq!(read_count, 3);
+        assert_eq!(input_format, FastxFormat::Fastq);
         assert_eq!(results.len(), 0);
     }
 
@@ -279,7 +298,7 @@ mod tests {
         let file_path = PathBuf::from("idontexist.fastq");
         let reads_to_save = FxHashSet::default();
         let (tx, _rx) = crossbeam::channel::unbounded();
-        let result = parse_fastq(&file_path, &reads_to_save, &tx);
+        let result = parse_fastx(&file_path, &reads_to_save, &tx);
 
         assert!(result.is_err());
     }
@@ -289,22 +308,15 @@ mod tests {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("output.fastq");
         let (tx, rx) = crossbeam::channel::unbounded();
-        let record1 = fastq::Record::new(
-            fastq::record::Definition::new("read1", "read1"),
-            "AAAA",
-            "!!!!",
-        );
-        let record2 = fastq::Record::new(
-            fastq::record::Definition::new("read2", "read2"),
-            "GGGG",
-            "!!!!",
-        );
-        tx.send(record1).unwrap();
-        tx.send(record2).unwrap();
+        tx.send(fastx_record("read1", "AAAA", Some("!!!!")))
+            .unwrap();
+        tx.send(fastx_record("read2", "GGGG", Some("!!!!")))
+            .unwrap();
         drop(tx);
-        let read_count = write_output_fastq(
+        let read_count = write_output_fastx(
             rx,
             &file_path,
+            FastxFormat::Fastq,
             Some(niffler::compression::Format::No),
             niffler::Level::One,
         )
@@ -323,22 +335,15 @@ mod tests {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("output.fastq");
         let (tx, rx) = crossbeam::channel::unbounded();
-        let record1 = fastq::Record::new(
-            fastq::record::Definition::new("read1", "read1"),
-            "AAAA",
-            "!!!!",
-        );
-        let record2 = fastq::Record::new(
-            fastq::record::Definition::new("read2", "read2"),
-            "GGGG",
-            "!!!!",
-        );
-        tx.send(record1).unwrap();
-        tx.send(record2).unwrap();
+        tx.send(fastx_record("read1", "AAAA", Some("!!!!")))
+            .unwrap();
+        tx.send(fastx_record("read2", "GGGG", Some("!!!!")))
+            .unwrap();
         drop(tx);
-        let read_count = write_output_fastq(
+        let read_count = write_output_fastx(
             rx,
             &file_path,
+            FastxFormat::Fastq,
             Some(niffler::compression::Format::Gzip),
             niffler::Level::One,
         )
@@ -363,22 +368,15 @@ mod tests {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("output.fastq");
         let (tx, rx) = crossbeam::channel::unbounded();
-        let record1 = fastq::Record::new(
-            fastq::record::Definition::new("read1", "read1"),
-            "AAAA",
-            "!!!!",
-        );
-        let record2 = fastq::Record::new(
-            fastq::record::Definition::new("read2", "read2"),
-            "GGGG",
-            "!!!!",
-        );
-        tx.send(record1).unwrap();
-        tx.send(record2).unwrap();
+        tx.send(fastx_record("read1", "AAAA", Some("!!!!")))
+            .unwrap();
+        tx.send(fastx_record("read2", "GGGG", Some("!!!!")))
+            .unwrap();
         drop(tx);
-        let read_count = write_output_fastq(
+        let read_count = write_output_fastx(
             rx,
             &file_path,
+            FastxFormat::Fastq,
             Some(niffler::compression::Format::Bzip),
             niffler::Level::One,
         )
@@ -403,20 +401,19 @@ mod tests {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("output.fasta");
         let (tx, rx) = crossbeam::channel::unbounded();
-        let record1 = fastq::Record::new(
-            fastq::record::Definition::new("read1", "read1"),
-            "AAAA",
-            "!!!!",
-        );
-        let record2 = fastq::Record::new(
-            fastq::record::Definition::new("read2", "read2"),
-            "GGGG",
-            "!!!!",
-        );
-        tx.send(record1).unwrap();
-        tx.send(record2).unwrap();
+        tx.send(fastx_record("read1", "AAAA", Some("!!!!")))
+            .unwrap();
+        tx.send(fastx_record("read2", "GGGG", Some("!!!!")))
+            .unwrap();
         drop(tx);
-        let read_count = write_output_fasta(rx, &file_path).unwrap();
+        let read_count = write_output_fastx(
+            rx,
+            &file_path,
+            FastxFormat::Fasta,
+            Some(niffler::compression::Format::No),
+            niffler::Level::One,
+        )
+        .unwrap();
         let file_content = fs::read_to_string(file_path).unwrap();
 
         assert_eq!(read_count, 2);
@@ -430,9 +427,10 @@ mod tests {
     fn test_write_output_fastq_error() {
         let file_path = PathBuf::from("/noperms.fastq");
         let (_, rx) = crossbeam::channel::unbounded();
-        let result = write_output_fastq(
+        let result = write_output_fastx(
             rx,
             &file_path,
+            FastxFormat::Fastq,
             Some(niffler::compression::Format::No),
             niffler::Level::One,
         );
@@ -444,7 +442,13 @@ mod tests {
     fn test_write_output_fasta_file_creation_error() {
         let file_path = PathBuf::from("/noperms.fasta");
         let (_, rx) = crossbeam::channel::unbounded();
-        let result = write_output_fasta(rx, &file_path);
+        let result = write_output_fastx(
+            rx,
+            &file_path,
+            FastxFormat::Fasta,
+            Some(niffler::compression::Format::No),
+            niffler::Level::One,
+        );
 
         assert!(result.is_err());
     }
@@ -457,17 +461,14 @@ mod tests {
         let file_path = subdir.join("output.fastq");
         assert!(!subdir.exists());
         let (tx, rx) = crossbeam::channel::unbounded();
-        let record1 = fastq::Record::new(
-            fastq::record::Definition::new("read1", "read1"),
-            "AAAA",
-            "!!!!",
-        );
-        tx.send(record1).unwrap();
+        tx.send(fastx_record("read1", "AAAA", Some("!!!!")))
+            .unwrap();
         drop(tx);
 
-        let read_count = write_output_fastq(
+        let read_count = write_output_fastx(
             rx,
             &file_path,
+            FastxFormat::Fastq,
             Some(niffler::compression::Format::No),
             niffler::Level::One,
         )
@@ -486,17 +487,14 @@ mod tests {
         fs::create_dir_all(&subdir).unwrap();
         assert!(subdir.exists());
         let (tx, rx) = crossbeam::channel::unbounded();
-        let record1 = fastq::Record::new(
-            fastq::record::Definition::new("read1", "read1"),
-            "AAAA",
-            "!!!!",
-        );
-        tx.send(record1).unwrap();
+        tx.send(fastx_record("read1", "AAAA", Some("!!!!")))
+            .unwrap();
         drop(tx);
 
-        let read_count = write_output_fastq(
+        let read_count = write_output_fastx(
             rx,
             &file_path,
+            FastxFormat::Fastq,
             Some(niffler::compression::Format::No),
             niffler::Level::One,
         )
