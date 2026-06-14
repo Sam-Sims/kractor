@@ -1,18 +1,38 @@
-use crate::parsers::fastx::{parse_fastq, write_output_fasta, write_output_fastq};
-use crate::parsers::kraken::{
-    build_tree_from_kraken_report, extract_children, extract_parents, ProcessedKrakenTree,
+use std::path::{Path, PathBuf};
+
+use color_eyre::{
+    Result,
+    eyre::{WrapErr, bail, eyre},
 };
-use color_eyre::{eyre::bail, eyre::eyre, eyre::WrapErr, Result};
-use crossbeam::{channel, thread};
+use crossbeam::channel;
 use fxhash::FxHashSet;
 use log::{debug, info, warn};
-use noodles::fastq;
-use std::path::PathBuf;
+
+use crate::{
+    cli::OutputFormat,
+    parsers::{
+        fastx::{
+            FastxFormat, FastxRecord, detect_fastx_format, parse_fastx, resolve_output_format,
+            write_output_fastx,
+        },
+        kraken::{
+            ProcessedKrakenTree, build_tree_from_kraken_report, extract_children, extract_parents,
+        },
+    },
+};
 
 #[derive(Debug, Clone)]
 pub struct CollectedTaxonIds {
     pub found: Vec<i32>,
     pub missing: Vec<i32>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct KractorResult {
+    pub reads_parsed: usize,
+    pub reads_output: usize,
+    pub input_format: FastxFormat,
+    pub output_format: FastxFormat,
 }
 
 pub fn process_single_end(
@@ -21,39 +41,50 @@ pub fn process_single_end(
     output: &[PathBuf],
     compression_type: Option<niffler::Format>,
     compression_level: niffler::Level,
-    fasta: bool,
-) -> Result<(usize, usize)> {
-    thread::scope(|scope| -> Result<(usize, usize)> {
-        let (tx, rx) = channel::unbounded::<fastq::Record>();
+    requested_output_format: OutputFormat,
+) -> Result<KractorResult> {
+    let input_format = detect_fastx_format(&input[0])
+        .wrap_err_with(|| format!("Failed to detect input format: {}", input[0].display()))?;
+    let output_format = resolve_output_format(input_format, requested_output_format);
 
-        let reader = scope.spawn(|_| {
-            let result = parse_fastq(&input[0], reads_to_save, &tx);
-            drop(tx);
-            result.wrap_err_with(|| format!("Failed to parse input file: {}", input[0].display()))
-        });
+    let (total_reads_parsed, total_reads_output) =
+        std::thread::scope(|scope| -> Result<(usize, usize)> {
+            let (tx, rx) = channel::unbounded::<FastxRecord>();
 
-        let writer = scope.spawn(|_| {
-            if fasta {
-                write_output_fasta(rx, &output[0]).wrap_err_with(|| {
-                    format!("Failed to write output file: {}", output[0].display())
-                })
-            } else {
-                write_output_fastq(rx, &output[0], compression_type, compression_level)
-                    .wrap_err_with(|| {
-                        format!("Failed to write output file: {}", output[0].display())
-                    })
-            }
-        });
+            let reader = scope.spawn(|| {
+                let result = parse_fastx(&input[0], reads_to_save, &tx).map(|(count, _)| count);
+                drop(tx);
+                result
+                    .wrap_err_with(|| format!("Failed to parse input file: {}", input[0].display()))
+            });
 
-        let total_reads_parsed = reader
-            .join()
-            .map_err(|_| eyre!("Reader thread panicked"))??;
-        let total_reads_output = writer
-            .join()
-            .map_err(|_| eyre!("Writer thread panicked"))??;
-        Ok((total_reads_parsed, total_reads_output))
+            let writer = scope.spawn(|| {
+                write_output_fastx(
+                    rx,
+                    &output[0],
+                    output_format,
+                    compression_type,
+                    compression_level,
+                )
+                .wrap_err_with(|| format!("Failed to write output file: {}", output[0].display()))
+            });
+
+            let total_reads_parsed = reader
+                .join()
+                .map_err(|_| eyre!("Reader thread for single-end input panicked"))??;
+            let total_reads_output = writer
+                .join()
+                .map_err(|_| eyre!("Writer thread for single-end output panicked"))??;
+
+            Ok((total_reads_parsed, total_reads_output))
+        })?;
+
+    Ok(KractorResult {
+        reads_parsed: total_reads_parsed,
+        reads_output: total_reads_output,
+        input_format,
+        output_format,
     })
-    .map_err(|_| eyre!("Thread communication error"))?
 }
 
 pub fn process_paired_end(
@@ -62,88 +93,118 @@ pub fn process_paired_end(
     output: &[PathBuf],
     compression_type: Option<niffler::Format>,
     compression_level: niffler::Level,
-    fasta: bool,
-) -> Result<((usize, usize), (usize, usize))> {
-    thread::scope(|scope| -> Result<((usize, usize), (usize, usize))> {
-        let (tx1, rx1) = channel::unbounded::<fastq::Record>();
-        let (tx2, rx2) = channel::unbounded::<fastq::Record>();
+    requested_output_format: OutputFormat,
+) -> Result<(KractorResult, KractorResult)> {
+    let input_format1 = detect_fastx_format(&input[0]).wrap_err_with(|| {
+        format!(
+            "Failed to detect first input format: {}",
+            input[0].display()
+        )
+    })?;
+    let input_format2 = detect_fastx_format(&input[1]).wrap_err_with(|| {
+        format!(
+            "Failed to detect second input format: {}",
+            input[1].display()
+        )
+    })?;
 
-        let reader1 = scope.spawn(|_| {
-            let result = parse_fastq(&input[0], reads_to_save, &tx1);
-            drop(tx1);
-            result.wrap_err_with(|| {
-                format!("Failed to parse first input file: {}", input[0].display())
-            })
-        });
+    if input_format1 == FastxFormat::Fasta || input_format2 == FastxFormat::Fasta {
+        bail!("Two input files are not supported for FASTA input");
+    }
 
-        let reader2 = scope.spawn(|_| {
-            let result = parse_fastq(&input[1], reads_to_save, &tx2);
-            drop(tx2);
-            result.wrap_err_with(|| {
-                format!("Failed to parse second input file: {}", input[1].display())
-            })
-        });
+    let input_format = FastxFormat::Fastq;
+    let output_format = resolve_output_format(input_format, requested_output_format);
 
-        let writer1 = scope.spawn(|_| {
-            if fasta {
-                write_output_fasta(rx1, &output[0]).wrap_err_with(|| {
+    let ((reads1, reads2), (out1, out2)) =
+        std::thread::scope(|scope| -> Result<((usize, usize), (usize, usize))> {
+            let (tx1, rx1) = channel::unbounded::<FastxRecord>();
+            let (tx2, rx2) = channel::unbounded::<FastxRecord>();
+
+            let reader1 = scope.spawn(|| {
+                let result = parse_fastx(&input[0], reads_to_save, &tx1).map(|(count, _)| count);
+                drop(tx1);
+                result.wrap_err_with(|| {
+                    format!("Failed to parse first input file: {}", input[0].display())
+                })
+            });
+
+            let reader2 = scope.spawn(|| {
+                let result = parse_fastx(&input[1], reads_to_save, &tx2).map(|(count, _)| count);
+                drop(tx2);
+                result.wrap_err_with(|| {
+                    format!("Failed to parse second input file: {}", input[1].display())
+                })
+            });
+
+            let writer1 = scope.spawn(|| {
+                write_output_fastx(
+                    rx1,
+                    &output[0],
+                    output_format,
+                    compression_type,
+                    compression_level,
+                )
+                .wrap_err_with(|| {
                     format!(
-                        "Failed to write FASTA output to first file: {}",
+                        "Failed to write output to first file: {}",
                         output[0].display()
                     )
                 })
-            } else {
-                write_output_fastq(rx1, &output[0], compression_type, compression_level)
-                    .wrap_err_with(|| {
-                        format!(
-                            "Failed to write FASTQ output to first file: {}",
-                            output[0].display()
-                        )
-                    })
-            }
-        });
+            });
 
-        let writer2 = scope.spawn(|_| {
-            if fasta {
-                write_output_fasta(rx2, &output[1]).wrap_err_with(|| {
+            let writer2 = scope.spawn(|| {
+                write_output_fastx(
+                    rx2,
+                    &output[1],
+                    output_format,
+                    compression_type,
+                    compression_level,
+                )
+                .wrap_err_with(|| {
                     format!(
-                        "Failed to write FASTA output to second file: {}",
+                        "Failed to write output to second file: {}",
                         output[1].display()
                     )
                 })
-            } else {
-                write_output_fastq(rx2, &output[1], compression_type, compression_level)
-                    .wrap_err_with(|| {
-                        format!(
-                            "Failed to write FASTQ output to second file: {}",
-                            output[1].display()
-                        )
-                    })
-            }
-        });
+            });
 
-        let total_parsed1 = reader1
-            .join()
-            .map_err(|_| eyre!("Reader thread for file1 panicked"))??;
-        let total_parsed2 = reader2
-            .join()
-            .map_err(|_| eyre!("Reader thread for file2 panicked"))??;
-        let total_reads_output1 = writer1
-            .join()
-            .map_err(|_| eyre!("Writer thread for file1 panicked"))??;
-        let total_reads_output2 = writer2
-            .join()
-            .map_err(|_| eyre!("Writer thread for file2 panicked"))??;
-        Ok((
-            (total_parsed1, total_reads_output1),
-            (total_parsed2, total_reads_output2),
-        ))
-    })
-    .map_err(|_| eyre!("Thread communication error"))?
+            let total_parsed1 = reader1
+                .join()
+                .map_err(|_| eyre!("Reader thread for file1 panicked"))??;
+            let total_parsed2 = reader2
+                .join()
+                .map_err(|_| eyre!("Reader thread for file2 panicked"))??;
+            let total_reads_output1 = writer1
+                .join()
+                .map_err(|_| eyre!("Writer thread for file1 panicked"))??;
+            let total_reads_output2 = writer2
+                .join()
+                .map_err(|_| eyre!("Writer thread for file2 panicked"))??;
+
+            Ok((
+                (total_parsed1, total_parsed2),
+                (total_reads_output1, total_reads_output2),
+            ))
+        })?;
+
+    Ok((
+        KractorResult {
+            reads_parsed: reads1,
+            reads_output: out1,
+            input_format,
+            output_format,
+        },
+        KractorResult {
+            reads_parsed: reads2,
+            reads_output: out2,
+            input_format,
+            output_format,
+        },
+    ))
 }
 
-pub fn collect_taxons_to_save(
-    report: &Option<PathBuf>,
+pub fn collect_taxa_to_save(
+    report: Option<&Path>,
     children: bool,
     parents: bool,
     taxids: &[i32],
@@ -177,7 +238,7 @@ pub fn collect_taxons_to_save(
         let taxids: Vec<i32> = taxids
             .iter()
             .filter(|id| !missing_taxon_ids.contains(id))
-            .cloned()
+            .copied()
             .collect();
 
         if taxon_map.is_empty() {
@@ -189,7 +250,7 @@ pub fn collect_taxons_to_save(
             let mut children = Vec::new();
             for taxid in taxids {
                 if let Some(&node_index) = taxon_map.get(&taxid) {
-                    extract_children(&nodes, node_index, &mut children)?;
+                    extract_children(&nodes, &mut children, node_index)?;
                 }
             }
             taxon_ids_to_save.extend(children);
@@ -224,12 +285,12 @@ pub fn collect_taxons_to_save(
 }
 
 #[cfg(test)]
-
 mod tests {
-    use super::*;
-    use std::fs::File;
-    use std::io::Write;
+    use std::{fs::File, io::Write};
+
     use tempfile::tempdir;
+
+    use super::*;
 
     #[test]
     fn test_process_single_end_fastq() {
@@ -243,18 +304,26 @@ mod tests {
         reads_to_save.insert(b"read1".to_vec());
         let input = vec![input_path];
         let output = vec![output_path.clone()];
-        let (reads_parsed, reads_output) = process_single_end(
+        let KractorResult {
+            reads_parsed,
+            reads_output,
+            input_format,
+            output_format,
+        } = process_single_end(
             &reads_to_save,
             &input,
             &output,
-            Some(niffler::compression::Format::No),
+            Some(niffler::Format::No),
             niffler::Level::One,
-            false,
+            OutputFormat::Auto,
         )
         .unwrap();
         let file_content = std::fs::read_to_string(output_path).unwrap();
 
         assert_eq!(reads_output, 1);
+        assert_eq!(reads_parsed, 2);
+        assert_eq!(input_format, FastxFormat::Fastq);
+        assert_eq!(output_format, FastxFormat::Fastq);
         assert!(file_content.contains("@read1"));
         assert!(file_content.contains("AAAA"));
         assert!(!file_content.contains("@read2"));
@@ -272,21 +341,104 @@ mod tests {
         reads_to_save.insert(b"read1".to_vec());
         let input = vec![input_path];
         let output = vec![output_path.clone()];
-        let (reads_parsed, reads_output) = process_single_end(
+        let KractorResult {
+            reads_parsed,
+            reads_output,
+            input_format,
+            output_format,
+        } = process_single_end(
             &reads_to_save,
             &input,
             &output,
-            Some(niffler::compression::Format::No),
+            Some(niffler::Format::No),
             niffler::Level::One,
-            true,
+            OutputFormat::Fasta,
         )
         .unwrap();
         let file_content = std::fs::read_to_string(output_path).unwrap();
 
         assert_eq!(reads_output, 1);
+        assert_eq!(reads_parsed, 2);
+        assert_eq!(input_format, FastxFormat::Fastq);
+        assert_eq!(output_format, FastxFormat::Fasta);
         assert!(file_content.contains(">read1"));
         assert!(file_content.contains("AAAA"));
         assert!(!file_content.contains("@read2"));
+    }
+
+    #[test]
+    fn test_process_single_end_fasta_auto() {
+        let dir = tempdir().unwrap();
+        let input_path = dir.path().join("input.fasta");
+        let output_path = dir.path().join("output.fasta");
+        let test_data = ">read1 some description\nAAAA\n>read2 another description\nGGGG\n";
+        let mut file = File::create(&input_path).unwrap();
+        file.write_all(test_data.as_bytes()).unwrap();
+        let mut reads_to_save = FxHashSet::default();
+        reads_to_save.insert(b"read1".to_vec());
+        let input = vec![input_path];
+        let output = vec![output_path.clone()];
+        let KractorResult {
+            reads_parsed,
+            reads_output,
+            input_format,
+            output_format,
+        } = process_single_end(
+            &reads_to_save,
+            &input,
+            &output,
+            Some(niffler::Format::No),
+            niffler::Level::One,
+            OutputFormat::Auto,
+        )
+        .unwrap();
+        let file_content = std::fs::read_to_string(output_path).unwrap();
+
+        assert_eq!(reads_output, 1);
+        assert_eq!(reads_parsed, 2);
+        assert_eq!(input_format, FastxFormat::Fasta);
+        assert_eq!(output_format, FastxFormat::Fasta);
+        assert!(file_content.contains(">read1 some description"));
+        assert!(file_content.contains("AAAA"));
+        assert!(!file_content.contains(">read2"));
+        assert!(!file_content.contains("+"));
+    }
+
+    #[test]
+    fn test_process_single_end_fasta_forced_fastq() {
+        let dir = tempdir().unwrap();
+        let input_path = dir.path().join("input.fasta");
+        let output_path = dir.path().join("output.fastq");
+        let test_data = ">read1\nAAAA\n";
+        let mut file = File::create(&input_path).unwrap();
+        file.write_all(test_data.as_bytes()).unwrap();
+        let mut reads_to_save = FxHashSet::default();
+        reads_to_save.insert(b"read1".to_vec());
+        let input = vec![input_path];
+        let output = vec![output_path.clone()];
+        let KractorResult {
+            reads_parsed,
+            reads_output,
+            input_format,
+            output_format,
+        } = process_single_end(
+            &reads_to_save,
+            &input,
+            &output,
+            Some(niffler::Format::No),
+            niffler::Level::One,
+            OutputFormat::Fastq,
+        )
+        .unwrap();
+        let file_content = std::fs::read_to_string(output_path).unwrap();
+
+        assert_eq!(reads_output, 1);
+        assert_eq!(reads_parsed, 1);
+        assert_eq!(input_format, FastxFormat::Fasta);
+        assert_eq!(output_format, FastxFormat::Fastq);
+        assert!(file_content.contains("@read1"));
+        assert!(file_content.contains("AAAA"));
+        assert!(file_content.contains("+"));
     }
 
     #[test]
@@ -303,7 +455,7 @@ mod tests {
             &output,
             None,
             niffler::Level::One,
-            false,
+            OutputFormat::Auto,
         );
 
         assert!(result.is_err());
@@ -326,19 +478,35 @@ mod tests {
         reads_to_save.insert(b"read1".to_vec());
         let input = vec![input_path1, input_path2];
         let output = vec![output_path1.clone(), output_path2.clone()];
-        let ((reads_parsed1, reads_output1), (reads_parsed2, reads_output2)) = process_paired_end(
+        let (
+            KractorResult {
+                reads_parsed: reads_parsed1,
+                reads_output: reads_output1,
+                input_format,
+                output_format,
+            },
+            KractorResult {
+                reads_parsed: reads_parsed2,
+                reads_output: reads_output2,
+                ..
+            },
+        ) = process_paired_end(
             &reads_to_save,
             &input,
             &output,
-            Some(niffler::compression::Format::No),
+            Some(niffler::Format::No),
             niffler::Level::One,
-            false,
+            OutputFormat::Auto,
         )
         .unwrap();
         let file_content1 = std::fs::read_to_string(output_path1).unwrap();
         let file_content2 = std::fs::read_to_string(output_path2).unwrap();
 
         assert_eq!(reads_output1, 1);
+        assert_eq!(reads_parsed1, 2);
+        assert_eq!(reads_parsed2, 2);
+        assert_eq!(input_format, FastxFormat::Fastq);
+        assert_eq!(output_format, FastxFormat::Fastq);
         assert_eq!(reads_output2, 1);
         assert!(file_content1.contains("@read1"));
         assert!(file_content1.contains("AAAA"));
@@ -364,25 +532,71 @@ mod tests {
         reads_to_save.insert(b"read1".to_vec());
         let input = vec![input_path1, input_path2];
         let output = vec![output_path1.clone(), output_path2.clone()];
-        let ((reads_parsed1, reads_output1), (reads_parsed2, reads_output2)) = process_paired_end(
+        let (
+            KractorResult {
+                reads_parsed: reads_parsed1,
+                reads_output: reads_output1,
+                input_format,
+                output_format,
+            },
+            KractorResult {
+                reads_parsed: reads_parsed2,
+                reads_output: reads_output2,
+                ..
+            },
+        ) = process_paired_end(
             &reads_to_save,
             &input,
             &output,
-            Some(niffler::compression::Format::No),
+            Some(niffler::Format::No),
             niffler::Level::One,
-            true,
+            OutputFormat::Fasta,
         )
         .unwrap();
         let file_content1 = std::fs::read_to_string(output_path1).unwrap();
         let file_content2 = std::fs::read_to_string(output_path2).unwrap();
 
         assert_eq!(reads_output1, 1);
+        assert_eq!(reads_parsed1, 2);
+        assert_eq!(reads_parsed2, 2);
+        assert_eq!(input_format, FastxFormat::Fastq);
+        assert_eq!(output_format, FastxFormat::Fasta);
         assert_eq!(reads_output2, 1);
         assert!(file_content1.contains(">read1"));
         assert!(file_content1.contains("AAAA"));
         assert!(!file_content1.contains("@read2"));
         assert!(file_content2.contains(">read1"));
         assert!(file_content2.contains("TTTT"));
+    }
+
+    #[test]
+    fn test_process_paired_end_rejects_fasta_input() {
+        let dir = tempdir().unwrap();
+        let input_path1 = dir.path().join("input1.fasta");
+        let input_path2 = dir.path().join("input2.fastq");
+        let output_path1 = dir.path().join("output1.fastq");
+        let output_path2 = dir.path().join("output2.fastq");
+        let test_data1 = ">read1\nAAAA\n";
+        let test_data2 = "@read1\nTTTT\n+\n!!!!\n";
+        let mut file1 = File::create(&input_path1).unwrap();
+        file1.write_all(test_data1.as_bytes()).unwrap();
+        let mut file2 = File::create(&input_path2).unwrap();
+        file2.write_all(test_data2.as_bytes()).unwrap();
+        let mut reads_to_save = FxHashSet::default();
+        reads_to_save.insert(b"read1".to_vec());
+        let input = vec![input_path1, input_path2];
+        let output = vec![output_path1, output_path2];
+
+        let result = process_paired_end(
+            &reads_to_save,
+            &input,
+            &output,
+            Some(niffler::Format::No),
+            niffler::Level::One,
+            OutputFormat::Auto,
+        );
+
+        assert!(result.is_err());
     }
 
     fn create_test_kraken_report(dir: &tempfile::TempDir) -> PathBuf {
@@ -407,16 +621,16 @@ mod tests {
 
     #[test]
     fn test_error_when_no_report_and_parents_or_children() {
-        let result = collect_taxons_to_save(&None, true, false, &[1], true);
+        let result = collect_taxa_to_save(None, true, false, &[1], true);
         assert!(result.is_err());
-        let result = collect_taxons_to_save(&None, false, true, &[1], true);
+        let result = collect_taxa_to_save(None, false, true, &[1], true);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_no_report() {
         let taxids = vec![123, 456, 789];
-        let collected = collect_taxons_to_save(&None, false, false, &taxids, true).unwrap();
+        let collected = collect_taxa_to_save(None, false, false, &taxids, true).unwrap();
 
         assert_eq!(collected.found, taxids);
         assert!(collected.missing.is_empty());
@@ -428,7 +642,7 @@ mod tests {
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![0, 2];
         let collected =
-            collect_taxons_to_save(&Some(report_path), false, false, &taxids, true).unwrap();
+            collect_taxa_to_save(Some(report_path.as_path()), false, false, &taxids, true).unwrap();
 
         assert_eq!(collected.found, vec![0, 2]);
         assert!(collected.missing.is_empty());
@@ -440,7 +654,7 @@ mod tests {
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![1385, 1386, 91061];
         let collected =
-            collect_taxons_to_save(&Some(report_path), false, false, &taxids, true).unwrap();
+            collect_taxa_to_save(Some(report_path.as_path()), false, false, &taxids, true).unwrap();
 
         assert_eq!(collected.found, taxids);
         assert!(collected.missing.is_empty());
@@ -452,7 +666,7 @@ mod tests {
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![1239];
         let collected =
-            collect_taxons_to_save(&Some(report_path), true, false, &taxids, true).unwrap();
+            collect_taxa_to_save(Some(report_path.as_path()), true, false, &taxids, true).unwrap();
 
         assert!(collected.found.contains(&1239));
         assert!(collected.found.contains(&91062));
@@ -465,7 +679,7 @@ mod tests {
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![91061];
         let collected =
-            collect_taxons_to_save(&Some(report_path), false, true, &taxids, true).unwrap();
+            collect_taxa_to_save(Some(report_path.as_path()), false, true, &taxids, true).unwrap();
 
         assert!(collected.found.contains(&91061));
         assert!(collected.found.contains(&1239));
@@ -479,18 +693,18 @@ mod tests {
         let dir = tempdir().unwrap();
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![999];
-        let result = collect_taxons_to_save(&Some(report_path), true, false, &taxids, true);
+        let result = collect_taxa_to_save(Some(report_path.as_path()), true, false, &taxids, true);
 
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_missing_taxons_recorded() {
+    fn test_missing_taxa_recorded() {
         let dir = tempdir().unwrap();
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![1239, 999];
         let collected =
-            collect_taxons_to_save(&Some(report_path), false, false, &taxids, true).unwrap();
+            collect_taxa_to_save(Some(report_path.as_path()), false, false, &taxids, true).unwrap();
 
         assert!(collected.found.contains(&1239));
         assert_eq!(collected.missing, vec![999]);
@@ -499,7 +713,7 @@ mod tests {
     #[test]
     fn test_dedup_and_sort() {
         let taxids = vec![456, 123, 456, 789, 123];
-        let collected = collect_taxons_to_save(&None, false, false, &taxids, true).unwrap();
+        let collected = collect_taxa_to_save(None, false, false, &taxids, true).unwrap();
 
         assert_eq!(collected.found, vec![123, 456, 789]);
         assert!(collected.missing.is_empty());
@@ -507,7 +721,7 @@ mod tests {
 
     #[test]
     fn test_empty_result() {
-        let result = collect_taxons_to_save(&None, false, false, &[], true);
+        let result = collect_taxa_to_save(None, false, false, &[], true);
 
         assert!(result.is_err());
     }

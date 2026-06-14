@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.0] - 2026-06-14
+
+### Added
+
+- Kractor now supports reading FASTA as input. The input format (FASTA or FASTQ) is detected from the first record, so no flag is needed to
+  specify it. Output format defaults to the same as the output format (fastq outputs fastq, fasta outputs fasta unless specified otherwise - see below)
+- `--output-format` option to choose the output sequence format. Takes `auto` (the default - match whatever the input
+  was), `fasta`, or `fastq`. This replaces the old `--output-fasta` flag.
+
+### Changed
+
+- Switched the FASTX parsing backend from noodles to needletail.
+- Renamed several fields in the JSON summary to be clearer and more consistent:
+  - `taxons_identified` -> `matched_taxon_ids`
+  - `reads_extracted_per_taxon` -> `assigned_reads_per_taxon`
+  - `total_reads_in` -> `total_input_records`
+  - `total_reads_out` -> `total_output_records`
+  - `proportion_extracted` -> `extraction_fraction`
+  - `input_format` -> `input_sequence_format`
+  - `output_format` -> `output_sequence_format`
+  - `missing_taxon_ids` -> `requested_taxon_ids_not_found`
+- The summary now also reports the taxon IDs you asked for in `requested_taxon_ids`, and whether the input was paired or
+  single in `input_layout`.
+- Migrated to the Rust 2024 edition.
+
+### Removed
+
+- `--output-fasta` flag. Use `--output-format fasta` instead.
+- noodles dependency, replaced by needletail.
+
+### Fixed
+
+- Prevent a panic when `-i`/`-o` were passed without a file path - they now require at least one argument.
+- No longer store the length and LCA fields when parsing the kraken output, since they were never used.
+- Typo in the `--compression-format` help text.
+
 ## [4.0.0] - 2026-01-26
 
 ### Changed
@@ -26,13 +62,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Kraken report/output parsing errors now include the line number and o line for easier debugging.
-
-## [4.0.0] - 2026-01-26
-
-### Changed
-
-- Summary output now lists identified taxon IDs in `taxons_identified` (replacing `total_taxon_count`) and includes zero
-  entries for identified taxa with no direct assignments in `reads_extracted_per_taxon`.
 
 ## [3.0.1] - 2025-10-16
 

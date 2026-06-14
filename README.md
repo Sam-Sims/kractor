@@ -10,11 +10,11 @@
 
 **kra**ken extr**actor**
 
-Kractor extracts reads from fastq `[.gz/.bz2]` files using taxonomic classifications obtained via Kraken2.
+Kractor extracts reads from FASTQ or FASTA `[.gz/.bz2]` files using taxonomic classifications obtained via Kraken2.
 It supports single or paired-end reads, can optionally include taxonomic parents or children, and uses minimal memory (~
 4.5 MB for a 17 GB FASTQ file).
 
-The end result is a `fast[q/a]` file containing all reads classified as the specified taxon(s).
+The end result is a FASTQ or FASTA file containing all reads classified as the specified taxon(s).
 
 Kractor significantly enhances processing speed compared to KrakenTools for both paired and unpaired reads.
 
@@ -90,7 +90,7 @@ All executables will be in the directory Kractor/target/release.
 ## Usage
 
 ```bash
-Extract reads from a FASTQ file based on taxonomic classification via Kraken2.
+Extract reads from a FASTQ or FASTA file based on taxonomic classification via Kraken2.
 
 Usage: kractor [OPTIONS] --input [<INPUT>...] --output [<OUTPUT>...] --kraken <KRAKEN> --taxid <TAXID>...
 
@@ -110,17 +110,17 @@ Options:
   -c, --children
           Include all child taxon IDs in the output. Requires a Kraken2 report file
       --compression-format <OUTPUT_TYPE>
-          Compression format for output files (gz, bz2). Overides the inferred format
+          Compression format for output files (gz, bz2). Overrides the inferred format
       --compression-level <COMPRESSION_LEVEL>
           Compression level (1-9) [default: 2]
       --exclude
           Exclude specified taxon IDs from the output
-      --output-fasta
-          Output results in FASTA format
+      --output-format <OUTPUT_FORMAT>
+          Output sequence format (auto, fasta, fastq) [default: auto] [possible values: auto, fasta, fastq]
       --summary
           Enable a JSON summary output written to stdout
       --no-header-detect
-          Disable detection and skipping of header lines in the Kraken2 report
+          Disable detection and skipping of any header lines in the Kraken2 report
   -v, --verbose
           Enable verbose output
   -h, --help
@@ -148,7 +148,7 @@ kractor -i sample.fastq -o extracted.fastq -k kraken_output.txt -r kraken_report
 kractor -i sample.fastq -o extracted.fastq -k kraken_output.txt -t 10239 --exclude
 
 # Output FASTA format instead of FASTQ
-kractor -i sample.fastq -o extracted.fasta -k kraken_output.txt -t 562 --output-fasta
+kractor -i sample.fastq -o extracted.fasta -k kraken_output.txt -t 562 --output-format fasta
 ```
 
 ### Summary statistics
@@ -157,39 +157,45 @@ Use `--summary` to get summary statistics (output to stdout on completion)
 
 ```json
 {
-  "taxons_identified": [
+  "kractor_version": "5.0.0",
+  "input_layout": "single",
+  "input_sequence_format": "fastq",
+  "output_sequence_format": "fasta",
+  "requested_taxon_ids": [
+    0,
+    1,
+    999999999
+  ],
+  "matched_taxon_ids": [
     0,
     1
   ],
-  "missing_taxon_ids": [
+  "requested_taxon_ids_not_found": [
     999999999
   ],
-  "reads_extracted_per_taxon": {
+  "total_input_records": 3491078,
+  "total_output_records": 747237,
+  "extraction_fraction": 0.2140419091180432,
+  "assigned_reads_per_taxon": {
     "0": 745591,
     "1": 1646
-  },
-  "total_reads_in": 3491078,
-  "total_reads_out": 747237,
-  "proportion_extracted": 0.2140419091180432,
-  "input_format": "single",
-  "output_format": "fastq",
-  "kractor_version": "3.1.0"
+  }
 }
 ```
 
 Fields:
 
-- `taxons_identified`: Taxon IDs found in the Kraken report/output based on the requested taxids (includes
-  parents/children if used).
-- `missing_taxon_ids`: Requested taxon IDs that were not found in the Kraken report.
-- `reads_extracted_per_taxon`: Number of reads extracted per identified taxon ID (0 indicates no direct assignments, but
-  present due to children/parents).
-- `total_reads_in`: Total reads parsed from the input file(s).
-- `total_reads_out`: Total reads written to the output file(s).
-- `proportion_extracted`: `total_reads_out / total_reads_in`.
-- `input_format`: `single` or `paired` input mode.
-- `output_format`: `fastq` or `fasta`, depending on `--output-fasta`.
 - `kractor_version`: Version of kractor that produced the summary.
+- `input_layout`: `single` or `paired` input mode.
+- `input_sequence_format`: Input sequence format, `fastq` or `fasta`.
+- `output_sequence_format`: Output sequence format, `fastq` or `fasta`.
+- `requested_taxon_ids`: Taxon IDs requested with `--taxid`.
+- `matched_taxon_ids`: Requested taxon IDs found in the Kraken report/output (includes parents/children if used).
+- `requested_taxon_ids_not_found`: Requested taxon IDs that were not found in the Kraken report/output.
+- `total_input_records`: Total records parsed from the input file(s).
+- `total_output_records`: Total records written to the output file(s).
+- `extraction_fraction`: `total_output_records / total_input_records`.
+- `assigned_reads_per_taxon`: Number of directly assigned reads per matched taxon ID (0 indicates no direct assignments, but present due to children/parents).
 
 ### Arguments:
 
@@ -199,8 +205,8 @@ Fields:
 
 `-i, --input`
 
-Specifies one or two input FASTQ files to extract reads from. Files may be uncompressed or compressed (`gz`, `bz2`).
-Paired end reads can be specified by:
+Specifies one input FASTA or FASTQ file, or two input FASTQ files for paired-end extraction. Files may be uncompressed or compressed (`gz`, `bz2`).
+Paired-end reads can be specified by:
 
 Using `--input` twice: `-i <R1_fastq_file> -i <R2_fastq_file>`
 
@@ -211,7 +217,7 @@ Using `--input` once but passing both files: `-i <R1_fastq_file> <R2_fastq_file>
 `-o, --output`
 
 Specifies the output file(s) for extracted reads, matching the order of the input files.
-Compression type is inferred from the file extension (.gz, .bz2). If not recognised, output will be uncompressed.
+Compression type is inferred from the file extension (`.gz`, `.bz2`). If not recognised, output will be uncompressed. Sequence format defaults to the input format unless `--output-format` is set.
 
 #### Kraken Output
 
@@ -232,12 +238,12 @@ For example: `-t 1 2 10`
 Each taxonomic id is affected by `--exclude`, `--parents`, and `--children` if those options are used.
 
 Taxonomic ids do not need to be present in a given report. This may be useful when running kractor in a wrapper script
-for several fastq files and just want to extract a set of taxon ids from them all - without caring if they are present
+for several FASTQ/FASTA files and just want to extract a set of taxon ids from them all - without caring if they are present
 or not.
 
 ### Optional:
 
-#### Output type
+#### Compression format
 
 `--compression-format`
 
@@ -260,11 +266,17 @@ Set compression level (1–9).
 
 Default: 2 (balance of speed and size)
 
-#### Output fasta
+#### Output sequence format
 
-`--output-fasta`
+`--output-format`
 
-Output sequences in FASTA format instead of FASTQ.
+Set the output sequence format.
+
+Valid values:
+
+- `auto` – use the input sequence format (default)
+- `fasta` – write FASTA output
+- `fastq` – write FASTQ output
 
 #### Kraken Report
 
