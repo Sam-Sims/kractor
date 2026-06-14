@@ -49,7 +49,7 @@ impl Kractor {
             chrono::Local::now().format("%H:%M:%S")
         );
         self.validate_outputs()?;
-        self.collect_taxons()?;
+        self.collect_taxa()?;
         info!("Processing Kraken2 output file");
         self.process_kraken_output()?;
         info!("Processing reads");
@@ -70,8 +70,8 @@ impl Kractor {
         Ok(())
     }
 
-    fn collect_taxons(&mut self) -> Result<()> {
-        let collected = extract::collect_taxons_to_save(
+    fn collect_taxa(&mut self) -> Result<()> {
+        let collected = extract::collect_taxa_to_save(
             &self.args.report,
             self.args.children,
             self.args.parents,

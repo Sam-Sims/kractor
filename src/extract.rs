@@ -93,7 +93,7 @@ pub fn process_paired_end(
     })?;
 
     if input_format1 == FastxFormat::Fasta || input_format2 == FastxFormat::Fasta {
-        bail!("FASTA input is only supported for single-end extraction, paired-end input must be FASTQ");
+        bail!("Two input files are not supported for FASTA input");
     }
 
     let input_format = FastxFormat::Fastq;
@@ -175,7 +175,7 @@ pub fn process_paired_end(
     Ok(((reads1, out1), (reads2, out2), input_format, output_format))
 }
 
-pub fn collect_taxons_to_save(
+pub fn collect_taxa_to_save(
     report: &Option<PathBuf>,
     children: bool,
     parents: bool,
@@ -559,16 +559,16 @@ mod tests {
 
     #[test]
     fn test_error_when_no_report_and_parents_or_children() {
-        let result = collect_taxons_to_save(&None, true, false, &[1], true);
+        let result = collect_taxa_to_save(&None, true, false, &[1], true);
         assert!(result.is_err());
-        let result = collect_taxons_to_save(&None, false, true, &[1], true);
+        let result = collect_taxa_to_save(&None, false, true, &[1], true);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_no_report() {
         let taxids = vec![123, 456, 789];
-        let collected = collect_taxons_to_save(&None, false, false, &taxids, true).unwrap();
+        let collected = collect_taxa_to_save(&None, false, false, &taxids, true).unwrap();
 
         assert_eq!(collected.found, taxids);
         assert!(collected.missing.is_empty());
@@ -580,7 +580,7 @@ mod tests {
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![0, 2];
         let collected =
-            collect_taxons_to_save(&Some(report_path), false, false, &taxids, true).unwrap();
+            collect_taxa_to_save(&Some(report_path), false, false, &taxids, true).unwrap();
 
         assert_eq!(collected.found, vec![0, 2]);
         assert!(collected.missing.is_empty());
@@ -592,7 +592,7 @@ mod tests {
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![1385, 1386, 91061];
         let collected =
-            collect_taxons_to_save(&Some(report_path), false, false, &taxids, true).unwrap();
+            collect_taxa_to_save(&Some(report_path), false, false, &taxids, true).unwrap();
 
         assert_eq!(collected.found, taxids);
         assert!(collected.missing.is_empty());
@@ -604,7 +604,7 @@ mod tests {
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![1239];
         let collected =
-            collect_taxons_to_save(&Some(report_path), true, false, &taxids, true).unwrap();
+            collect_taxa_to_save(&Some(report_path), true, false, &taxids, true).unwrap();
 
         assert!(collected.found.contains(&1239));
         assert!(collected.found.contains(&91062));
@@ -617,7 +617,7 @@ mod tests {
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![91061];
         let collected =
-            collect_taxons_to_save(&Some(report_path), false, true, &taxids, true).unwrap();
+            collect_taxa_to_save(&Some(report_path), false, true, &taxids, true).unwrap();
 
         assert!(collected.found.contains(&91061));
         assert!(collected.found.contains(&1239));
@@ -631,18 +631,18 @@ mod tests {
         let dir = tempdir().unwrap();
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![999];
-        let result = collect_taxons_to_save(&Some(report_path), true, false, &taxids, true);
+        let result = collect_taxa_to_save(&Some(report_path), true, false, &taxids, true);
 
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_missing_taxons_recorded() {
+    fn test_missing_taxa_recorded() {
         let dir = tempdir().unwrap();
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![1239, 999];
         let collected =
-            collect_taxons_to_save(&Some(report_path), false, false, &taxids, true).unwrap();
+            collect_taxa_to_save(&Some(report_path), false, false, &taxids, true).unwrap();
 
         assert!(collected.found.contains(&1239));
         assert_eq!(collected.missing, vec![999]);
@@ -651,7 +651,7 @@ mod tests {
     #[test]
     fn test_dedup_and_sort() {
         let taxids = vec![456, 123, 456, 789, 123];
-        let collected = collect_taxons_to_save(&None, false, false, &taxids, true).unwrap();
+        let collected = collect_taxa_to_save(&None, false, false, &taxids, true).unwrap();
 
         assert_eq!(collected.found, vec![123, 456, 789]);
         assert!(collected.missing.is_empty());
@@ -659,7 +659,7 @@ mod tests {
 
     #[test]
     fn test_empty_result() {
-        let result = collect_taxons_to_save(&None, false, false, &[], true);
+        let result = collect_taxa_to_save(&None, false, false, &[], true);
 
         assert!(result.is_err());
     }

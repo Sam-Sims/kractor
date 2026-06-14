@@ -598,7 +598,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("kraken_report.txt");
         let test_data = "\
-        percent\tclades\ttaxons\trank\ttaxid\tscientific name
+        percent\tclades\ttaxa\trank\ttaxid\tscientific name
         100.00\t100\t100\tR\t1\troot
         10.77\t100\t50\tS\t1337\t  Homo sapiens";
         let mut file = File::create(&file_path).unwrap();
@@ -625,7 +625,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("kraken_report.txt");
         let test_data = "\
-        percent\tclades\ttaxons\trank\ttaxid\tscientific name
+        percent\tclades\ttaxa\trank\ttaxid\tscientific name
         100.00\t100\t100\tR\t1\troot
         10.77\t100\t50\tS\t1337\t  Homo sapiens";
         let mut file = File::create(&file_path).unwrap();
@@ -811,13 +811,13 @@ mod tests {
         let ProcessedKrakenTree {
             nodes,
             taxon_map,
-            missing_taxon_ids: missing_taxons,
+            missing_taxon_ids: missing_taxa,
         } = build_tree_from_kraken_report(&taxon_to_save, &file_path, true).unwrap();
         assert_eq!(nodes.len(), 4);
         assert_eq!(taxon_map.len(), 1);
         assert!(taxon_map.contains_key(&2));
         assert!(!taxon_map.contains_key(&1386));
-        assert_eq!(missing_taxons, vec![1386]);
+        assert_eq!(missing_taxa, vec![1386]);
     }
 
     #[test]
@@ -834,11 +834,11 @@ mod tests {
         let ProcessedKrakenTree {
             nodes,
             taxon_map,
-            missing_taxon_ids: missing_taxons,
+            missing_taxon_ids: missing_taxa,
         } = build_tree_from_kraken_report(&taxon_to_save, &file_path, true).unwrap();
         assert_eq!(nodes.len(), 3);
         assert_eq!(taxon_map.len(), 0);
-        assert_eq!(missing_taxons, vec![1386]);
+        assert_eq!(missing_taxa, vec![1386]);
     }
 
     #[test]
