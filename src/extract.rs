@@ -1,16 +1,25 @@
-use crate::cli::OutputFormat;
-use crate::parsers::fastx::{
-    FastxFormat, FastxRecord, detect_fastx_format, parse_fastx, resolve_output_format,
-    write_output_fastx,
+use std::path::{Path, PathBuf};
+
+use color_eyre::{
+    Result,
+    eyre::{WrapErr, bail, eyre},
 };
-use crate::parsers::kraken::{
-    ProcessedKrakenTree, build_tree_from_kraken_report, extract_children, extract_parents,
-};
-use color_eyre::{Result, eyre::WrapErr, eyre::bail, eyre::eyre};
-use crossbeam::{channel, thread};
+use crossbeam::channel;
 use fxhash::FxHashSet;
 use log::{debug, info, warn};
-use std::path::PathBuf;
+
+use crate::{
+    cli::OutputFormat,
+    parsers::{
+        fastx::{
+            FastxFormat, FastxRecord, detect_fastx_format, parse_fastx, resolve_output_format,
+            write_output_fastx,
+        },
+        kraken::{
+            ProcessedKrakenTree, build_tree_from_kraken_report, extract_children, extract_parents,
+        },
+    },
+};
 
 #[derive(Debug, Clone)]
 pub struct CollectedTaxonIds {
@@ -39,17 +48,17 @@ pub fn process_single_end(
     let output_format = resolve_output_format(input_format, requested_output_format);
 
     let (total_reads_parsed, total_reads_output) =
-        thread::scope(|scope| -> Result<(usize, usize)> {
+        std::thread::scope(|scope| -> Result<(usize, usize)> {
             let (tx, rx) = channel::unbounded::<FastxRecord>();
 
-            let reader = scope.spawn(|_| {
+            let reader = scope.spawn(|| {
                 let result = parse_fastx(&input[0], reads_to_save, &tx).map(|(count, _)| count);
                 drop(tx);
                 result
                     .wrap_err_with(|| format!("Failed to parse input file: {}", input[0].display()))
             });
 
-            let writer = scope.spawn(|_| {
+            let writer = scope.spawn(|| {
                 write_output_fastx(
                     rx,
                     &output[0],
@@ -68,8 +77,7 @@ pub fn process_single_end(
                 .map_err(|_| eyre!("Writer thread for single-end output panicked"))??;
 
             Ok((total_reads_parsed, total_reads_output))
-        })
-        .map_err(|_| eyre!("Thread communication error"))??;
+        })?;
 
     Ok(KractorResult {
         reads_parsed: total_reads_parsed,
@@ -108,11 +116,11 @@ pub fn process_paired_end(
     let output_format = resolve_output_format(input_format, requested_output_format);
 
     let ((reads1, reads2), (out1, out2)) =
-        thread::scope(|scope| -> Result<((usize, usize), (usize, usize))> {
+        std::thread::scope(|scope| -> Result<((usize, usize), (usize, usize))> {
             let (tx1, rx1) = channel::unbounded::<FastxRecord>();
             let (tx2, rx2) = channel::unbounded::<FastxRecord>();
 
-            let reader1 = scope.spawn(|_| {
+            let reader1 = scope.spawn(|| {
                 let result = parse_fastx(&input[0], reads_to_save, &tx1).map(|(count, _)| count);
                 drop(tx1);
                 result.wrap_err_with(|| {
@@ -120,7 +128,7 @@ pub fn process_paired_end(
                 })
             });
 
-            let reader2 = scope.spawn(|_| {
+            let reader2 = scope.spawn(|| {
                 let result = parse_fastx(&input[1], reads_to_save, &tx2).map(|(count, _)| count);
                 drop(tx2);
                 result.wrap_err_with(|| {
@@ -128,7 +136,7 @@ pub fn process_paired_end(
                 })
             });
 
-            let writer1 = scope.spawn(|_| {
+            let writer1 = scope.spawn(|| {
                 write_output_fastx(
                     rx1,
                     &output[0],
@@ -144,7 +152,7 @@ pub fn process_paired_end(
                 })
             });
 
-            let writer2 = scope.spawn(|_| {
+            let writer2 = scope.spawn(|| {
                 write_output_fastx(
                     rx2,
                     &output[1],
@@ -177,8 +185,7 @@ pub fn process_paired_end(
                 (total_parsed1, total_parsed2),
                 (total_reads_output1, total_reads_output2),
             ))
-        })
-        .map_err(|_| eyre!("Thread communication error"))??;
+        })?;
 
     Ok((
         KractorResult {
@@ -197,7 +204,7 @@ pub fn process_paired_end(
 }
 
 pub fn collect_taxa_to_save(
-    report: &Option<PathBuf>,
+    report: Option<&Path>,
     children: bool,
     parents: bool,
     taxids: &[i32],
@@ -231,7 +238,7 @@ pub fn collect_taxa_to_save(
         let taxids: Vec<i32> = taxids
             .iter()
             .filter(|id| !missing_taxon_ids.contains(id))
-            .cloned()
+            .copied()
             .collect();
 
         if taxon_map.is_empty() {
@@ -243,7 +250,7 @@ pub fn collect_taxa_to_save(
             let mut children = Vec::new();
             for taxid in taxids {
                 if let Some(&node_index) = taxon_map.get(&taxid) {
-                    extract_children(&nodes, node_index, &mut children)?;
+                    extract_children(&nodes, &mut children, node_index)?;
                 }
             }
             taxon_ids_to_save.extend(children);
@@ -279,10 +286,11 @@ pub fn collect_taxa_to_save(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::fs::File;
-    use std::io::Write;
+    use std::{fs::File, io::Write};
+
     use tempfile::tempdir;
+
+    use super::*;
 
     #[test]
     fn test_process_single_end_fastq() {
@@ -613,16 +621,16 @@ mod tests {
 
     #[test]
     fn test_error_when_no_report_and_parents_or_children() {
-        let result = collect_taxa_to_save(&None, true, false, &[1], true);
+        let result = collect_taxa_to_save(None, true, false, &[1], true);
         assert!(result.is_err());
-        let result = collect_taxa_to_save(&None, false, true, &[1], true);
+        let result = collect_taxa_to_save(None, false, true, &[1], true);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_no_report() {
         let taxids = vec![123, 456, 789];
-        let collected = collect_taxa_to_save(&None, false, false, &taxids, true).unwrap();
+        let collected = collect_taxa_to_save(None, false, false, &taxids, true).unwrap();
 
         assert_eq!(collected.found, taxids);
         assert!(collected.missing.is_empty());
@@ -634,7 +642,7 @@ mod tests {
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![0, 2];
         let collected =
-            collect_taxa_to_save(&Some(report_path), false, false, &taxids, true).unwrap();
+            collect_taxa_to_save(Some(report_path.as_path()), false, false, &taxids, true).unwrap();
 
         assert_eq!(collected.found, vec![0, 2]);
         assert!(collected.missing.is_empty());
@@ -646,7 +654,7 @@ mod tests {
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![1385, 1386, 91061];
         let collected =
-            collect_taxa_to_save(&Some(report_path), false, false, &taxids, true).unwrap();
+            collect_taxa_to_save(Some(report_path.as_path()), false, false, &taxids, true).unwrap();
 
         assert_eq!(collected.found, taxids);
         assert!(collected.missing.is_empty());
@@ -658,7 +666,7 @@ mod tests {
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![1239];
         let collected =
-            collect_taxa_to_save(&Some(report_path), true, false, &taxids, true).unwrap();
+            collect_taxa_to_save(Some(report_path.as_path()), true, false, &taxids, true).unwrap();
 
         assert!(collected.found.contains(&1239));
         assert!(collected.found.contains(&91062));
@@ -671,7 +679,7 @@ mod tests {
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![91061];
         let collected =
-            collect_taxa_to_save(&Some(report_path), false, true, &taxids, true).unwrap();
+            collect_taxa_to_save(Some(report_path.as_path()), false, true, &taxids, true).unwrap();
 
         assert!(collected.found.contains(&91061));
         assert!(collected.found.contains(&1239));
@@ -685,7 +693,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![999];
-        let result = collect_taxa_to_save(&Some(report_path), true, false, &taxids, true);
+        let result = collect_taxa_to_save(Some(report_path.as_path()), true, false, &taxids, true);
 
         assert!(result.is_err());
     }
@@ -696,7 +704,7 @@ mod tests {
         let report_path = create_test_kraken_report(&dir);
         let taxids = vec![1239, 999];
         let collected =
-            collect_taxa_to_save(&Some(report_path), false, false, &taxids, true).unwrap();
+            collect_taxa_to_save(Some(report_path.as_path()), false, false, &taxids, true).unwrap();
 
         assert!(collected.found.contains(&1239));
         assert_eq!(collected.missing, vec![999]);
@@ -705,7 +713,7 @@ mod tests {
     #[test]
     fn test_dedup_and_sort() {
         let taxids = vec![456, 123, 456, 789, 123];
-        let collected = collect_taxa_to_save(&None, false, false, &taxids, true).unwrap();
+        let collected = collect_taxa_to_save(None, false, false, &taxids, true).unwrap();
 
         assert_eq!(collected.found, vec![123, 456, 789]);
         assert!(collected.missing.is_empty());
@@ -713,7 +721,7 @@ mod tests {
 
     #[test]
     fn test_empty_result() {
-        let result = collect_taxa_to_save(&None, false, false, &[], true);
+        let result = collect_taxa_to_save(None, false, false, &[], true);
 
         assert!(result.is_err());
     }

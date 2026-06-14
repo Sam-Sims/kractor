@@ -1,5 +1,6 @@
-use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
+
+use clap::{Parser, ValueEnum};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum OutputFormat {
@@ -16,10 +17,10 @@ pub enum OutputFormat {
 )]
 pub struct Cli {
     /// Input file path(s). Accepts up to 2 files (for paired-end reads).
-    #[arg(short = 'i', long = "input", num_args(0..=2), required = true)]
+    #[arg(short = 'i', long = "input", num_args(1..=2), required = true)]
     pub input: Vec<PathBuf>,
     /// Output file path(s). Accepts up to 2 files (for paired-end reads).
-    #[arg(short = 'o', long = "output", num_args(0..=2), required = true)]
+    #[arg(short = 'o', long = "output", num_args(1..=2), required = true)]
     pub output: Vec<PathBuf>,
     /// Kraken2 stdout file path.
     #[arg(short = 'k', long = "kraken", required = true)]
@@ -31,10 +32,10 @@ pub struct Cli {
     #[arg(short = 't', long = "taxid", required = true, num_args(1..))]
     pub taxid: Vec<i32>,
     /// Include all parent taxon IDs in the output. Requires a Kraken2 report file.
-    #[arg(short = 'p', long, action)]
+    #[arg(short = 'p', long)]
     pub parents: bool,
     /// Include all child taxon IDs in the output. Requires a Kraken2 report file.
-    #[arg(short = 'c', long, action)]
+    #[arg(short = 'c', long)]
     pub children: bool,
     /// Compression format for output files (gz, bz2). Overrides the inferred format.
     #[arg(long = "compression-format", value_parser(validate_compression))]
@@ -56,7 +57,7 @@ pub struct Cli {
     #[arg(long = "summary")]
     pub summary: bool,
     /// Disable detection and skipping of any header lines in the Kraken2 report.
-    #[arg(long = "no-header-detect", action)]
+    #[arg(long = "no-header-detect")]
     pub no_report_header_detect: bool,
     /// Enable verbose output.
     #[arg(short, long)]

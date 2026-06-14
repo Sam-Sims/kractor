@@ -1,12 +1,15 @@
-use crate::cli::OutputFormat;
+use std::{
+    fmt, fs, io,
+    path::Path,
+    time::{Duration, Instant},
+};
+
 use color_eyre::eyre::{Context, Result, eyre};
 use crossbeam::channel::{Receiver, Sender};
 use fxhash::FxHashSet;
 use log::{debug, trace};
-use std::fmt;
-use std::path::Path;
-use std::time::{Duration, Instant};
-use std::{fs, io};
+
+use crate::cli::OutputFormat;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FastxFormat {
@@ -204,11 +207,15 @@ fn infer_compression(file_path: &Path) -> niffler::Format {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::fs::File;
-    use std::io::{BufReader, Read, Write};
-    use std::path::PathBuf;
+    use std::{
+        fs::File,
+        io::{BufReader, Read, Write},
+        path::PathBuf,
+    };
+
     use tempfile::tempdir;
+
+    use super::*;
 
     fn fastx_record(id: &str, seq: &str, qual: Option<&str>) -> FastxRecord {
         FastxRecord {

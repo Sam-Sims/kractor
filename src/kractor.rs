@@ -1,28 +1,22 @@
-use crate::extract::{KractorResult, process_paired_end, process_single_end};
-use crate::parsers::kraken::ProcessedKrakenOutput;
-use crate::{Cli, extract, parsers};
-use color_eyre::Result;
-use color_eyre::eyre::{bail, ensure};
+use color_eyre::{
+    Result,
+    eyre::{bail, ensure},
+};
 use fxhash::{FxHashMap, FxHashSet};
 use log::info;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
-struct Summary {
-    kractor_version: String,
-    input_layout: String,
-    input_sequence_format: String,
-    output_sequence_format: String,
-    requested_taxon_ids: Vec<i32>,
-    matched_taxon_ids: Vec<i32>,
-    requested_taxon_ids_not_found: Vec<i32>,
-    total_input_records: usize,
-    total_output_records: usize,
-    extraction_fraction: f64,
-    assigned_reads_per_taxon: FxHashMap<i32, usize>,
+use crate::{
+    Cli,
+    extract::{self, KractorResult, process_paired_end, process_single_end},
+    parsers::{self, kraken::ProcessedKrakenOutput},
+};
+
+pub fn run(args: Cli) -> Result<()> {
+    Kractor::new(args).run_inner()
 }
 
-pub struct Kractor {
+struct Kractor {
     args: Cli,
     taxon_ids: Vec<i32>,
     missing_taxon_ids: Vec<i32>,
@@ -32,7 +26,7 @@ pub struct Kractor {
 }
 
 impl Kractor {
-    pub fn new(args: Cli) -> Self {
+    fn new(args: Cli) -> Self {
         Self {
             args,
             taxon_ids: Vec::new(),
@@ -43,7 +37,7 @@ impl Kractor {
         }
     }
 
-    pub fn run(&mut self) -> Result<()> {
+    fn run_inner(&mut self) -> Result<()> {
         info!(
             "Starting kractor at {}",
             chrono::Local::now().format("%H:%M:%S")
@@ -63,8 +57,8 @@ impl Kractor {
         for out_file in &self.args.output {
             ensure!(
                 !out_file.exists(),
-                "Output file already exists: {:?}",
-                out_file
+                "Output file already exists: {}",
+                out_file.display()
             );
         }
         Ok(())
@@ -72,7 +66,7 @@ impl Kractor {
 
     fn collect_taxa(&mut self) -> Result<()> {
         let collected = extract::collect_taxa_to_save(
-            &self.args.report,
+            self.args.report.as_deref(),
             self.args.children,
             self.args.parents,
             &self.args.taxid,
@@ -171,9 +165,25 @@ impl Kractor {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct Summary {
+    kractor_version: String,
+    input_layout: String,
+    input_sequence_format: String,
+    output_sequence_format: String,
+    requested_taxon_ids: Vec<i32>,
+    matched_taxon_ids: Vec<i32>,
+    requested_taxon_ids_not_found: Vec<i32>,
+    total_input_records: usize,
+    total_output_records: usize,
+    extraction_fraction: f64,
+    assigned_reads_per_taxon: FxHashMap<i32, usize>,
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+
     use tempfile::tempdir;
 
     use super::*;

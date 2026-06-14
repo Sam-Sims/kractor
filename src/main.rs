@@ -1,19 +1,32 @@
-use chrono::Local;
-use clap::Parser;
-use color_eyre::Result;
-use color_eyre::eyre::bail;
-use env_logger::Builder;
-use env_logger::fmt::Color;
-use log::LevelFilter;
+pub mod cli;
+pub mod extract;
+pub mod kractor;
+pub mod parsers;
+
 use std::io::Write;
 
-pub mod extract;
-pub mod parsers;
-pub use crate::cli::Cli;
-pub mod cli;
-pub mod kractor;
+use chrono::Local;
+use clap::Parser;
+use color_eyre::{Result, eyre::bail};
+use env_logger::{Builder, fmt::Color};
+use log::LevelFilter;
 
-use kractor::Kractor;
+pub use crate::cli::Cli;
+
+fn main() -> Result<()> {
+    color_eyre::install()?;
+
+    let args = Cli::parse();
+    init_logging(args.verbose);
+
+    if args.input.len() != args.output.len() {
+        bail!("Number of input and output files must match");
+    }
+
+    kractor::run(args)?;
+
+    Ok(())
+}
 
 fn init_logging(verbose: bool) {
     let level_filter = if verbose {
@@ -43,20 +56,4 @@ fn init_logging(verbose: bool) {
         })
         .filter(None, level_filter)
         .init();
-}
-
-fn main() -> Result<()> {
-    let args = Cli::parse();
-    init_logging(args.verbose);
-
-    color_eyre::install()?;
-
-    if args.input.len() != args.output.len() {
-        bail!("Number of input and output files must match");
-    }
-
-    let mut app = Kractor::new(args);
-    app.run()?;
-
-    Ok(())
 }
