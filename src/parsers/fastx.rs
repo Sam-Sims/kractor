@@ -16,8 +16,8 @@ pub enum FastxFormat {
 impl std::fmt::Display for FastxFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FastxFormat::Fasta => f.write_str("fasta"),
-            FastxFormat::Fastq => f.write_str("fastq"),
+            Self::Fasta => f.write_str("fasta"),
+            Self::Fastq => f.write_str("fastq"),
         }
     }
 }
@@ -157,7 +157,12 @@ pub fn write_output_fastx(
                 writer.as_mut(),
                 needletail::parser::LineEnding::Unix,
             )
-            .wrap_err_with(|| format!("Error writing FASTA record: {record:?}"))?,
+            .wrap_err_with(|| {
+                format!(
+                    "error writing FASTA record with id {}",
+                    String::from_utf8_lossy(&record.id)
+                )
+            })?,
             FastxFormat::Fastq => needletail::parser::write_fastq(
                 &record.id,
                 &record.seq,
@@ -165,7 +170,12 @@ pub fn write_output_fastx(
                 writer.as_mut(),
                 needletail::parser::LineEnding::Unix,
             )
-            .wrap_err_with(|| format!("Error writing FASTQ record: {record:?}"))?,
+            .wrap_err_with(|| {
+                format!(
+                    "error writing FASTQ record with id {}",
+                    String::from_utf8_lossy(&record.id)
+                )
+            })?,
         }
 
         read_output_count += 1;
@@ -176,19 +186,15 @@ pub fn write_output_fastx(
 
 fn read_id(record_id: &[u8]) -> &[u8] {
     record_id
-        .split(|byte| byte.is_ascii_whitespace())
+        .split(u8::is_ascii_whitespace)
         .next()
         .unwrap_or(record_id)
 }
 
 fn infer_compression(file_path: &Path) -> niffler::compression::Format {
-    match file_path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext.to_ascii_lowercase())
-    {
-        Some(ref ext) if ext == "gz" => niffler::compression::Format::Gzip,
-        Some(ref ext) if ext == "bz2" => niffler::compression::Format::Bzip,
+    match file_path.extension().and_then(|ext| ext.to_str()) {
+        Some(ext) if ext.eq_ignore_ascii_case("gz") => niffler::compression::Format::Gzip,
+        Some(ext) if ext.eq_ignore_ascii_case("bz2") => niffler::compression::Format::Bzip,
         _ => niffler::compression::Format::No,
     }
 }
