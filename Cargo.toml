@@ -2,6 +2,7 @@
 name = "kractor"
 version = "4.0.0"
 edition = "2024"
+rust-version = "1.88"
 authors = ["Samuel Sims"]
 description = "Extract reads from a FASTQ file based on taxonomic classification via Kraken2."
 readme = "README.md"

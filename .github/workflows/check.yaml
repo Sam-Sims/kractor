@@ -84,7 +84,7 @@ jobs:
     # https://docs.github.com/en/actions/learn-github-actions/contexts#context-availability
     strategy:
       matrix:
-        msrv: [ "1.81.0" ] # obtained from cargo-msrv 16/04/2025
+        msrv: [ "1.88.0" ] # edition 2024 needs >=1.85; let-chains need >=1.88
     name: ubuntu / ${{ matrix.msrv }}
     steps:
       - uses: actions/checkout@v4
