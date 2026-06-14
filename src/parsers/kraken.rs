@@ -30,8 +30,6 @@ pub struct KrakenRecord {
     pub is_classified: bool,
     pub read_id: Vec<u8>,
     pub taxon_id: i32,
-    pub length: String,
-    pub lca_map: String,
 }
 
 #[derive(Debug, Clone)]
@@ -70,10 +68,10 @@ fn process_kraken_output_line(kraken_output: &str) -> Result<KrakenRecord> {
     let taxon_id = fields
         .next()
         .ok_or_else(|| eyre!("Missing taxon ID field"))?;
-    let length = fields
+    fields
         .next()
         .ok_or_else(|| eyre!("Missing length field in the kraken output file"))?;
-    let lca_map = fields
+    fields
         .next()
         .ok_or_else(|| eyre!("Missing LCA map in the kraken output file"))?;
 
@@ -87,8 +85,6 @@ fn process_kraken_output_line(kraken_output: &str) -> Result<KrakenRecord> {
             is_classified,
             read_id: read_id.as_bytes().to_vec(),
             taxon_id,
-            length: length.to_string(),
-            lca_map: lca_map.to_string(),
         })
     } else {
         bail!("Invalid kraken output line format: Expected 5 tab-separated fields, but got more");
@@ -348,8 +344,6 @@ mod tests {
         assert!(result.is_classified);
         assert_eq!(result.read_id, b"read_123");
         assert_eq!(result.taxon_id, 1337);
-        assert_eq!(result.length, "150");
-        assert_eq!(result.lca_map, "0:1 1:10");
     }
 
     #[test]
@@ -359,8 +353,6 @@ mod tests {
         assert!(!result.is_classified);
         assert_eq!(result.read_id, b"read_123");
         assert_eq!(result.taxon_id, 1337);
-        assert_eq!(result.length, "150");
-        assert_eq!(result.lca_map, "0:1 1:10");
     }
 
     #[test]
