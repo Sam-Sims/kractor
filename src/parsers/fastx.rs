@@ -3,6 +3,7 @@ use color_eyre::eyre::{Context, Result, eyre};
 use crossbeam::channel::{Receiver, Sender};
 use fxhash::FxHashSet;
 use log::{debug, trace};
+use std::fmt;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use std::{fs, io};
@@ -22,8 +23,8 @@ impl From<needletail::parser::Format> for FastxFormat {
     }
 }
 
-impl std::fmt::Display for FastxFormat {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for FastxFormat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Fasta => f.write_str("fasta"),
             Self::Fastq => f.write_str("fastq"),
@@ -193,11 +194,11 @@ fn read_id(record_id: &[u8]) -> &[u8] {
         .unwrap_or(record_id)
 }
 
-fn infer_compression(file_path: &Path) -> niffler::compression::Format {
+fn infer_compression(file_path: &Path) -> niffler::Format {
     match file_path.extension().and_then(|ext| ext.to_str()) {
-        Some(ext) if ext.eq_ignore_ascii_case("gz") => niffler::compression::Format::Gzip,
-        Some(ext) if ext.eq_ignore_ascii_case("bz2") => niffler::compression::Format::Bzip,
-        _ => niffler::compression::Format::No,
+        Some(ext) if ext.eq_ignore_ascii_case("gz") => niffler::Format::Gzip,
+        Some(ext) if ext.eq_ignore_ascii_case("bz2") => niffler::Format::Bzip,
+        _ => niffler::Format::No,
     }
 }
 
@@ -222,7 +223,7 @@ mod tests {
         let file_path = PathBuf::from("test.gz");
         let compression = infer_compression(&file_path);
 
-        assert_eq!(compression, niffler::compression::Format::Gzip);
+        assert_eq!(compression, niffler::Format::Gzip);
     }
 
     #[test]
@@ -230,7 +231,7 @@ mod tests {
         let file_path = PathBuf::from("test.bz2");
         let compression = infer_compression(&file_path);
 
-        assert_eq!(compression, niffler::compression::Format::Bzip);
+        assert_eq!(compression, niffler::Format::Bzip);
     }
 
     #[test]
@@ -238,7 +239,7 @@ mod tests {
         let file_path = PathBuf::from("test.fastq");
         let compression = infer_compression(&file_path);
 
-        assert_eq!(compression, niffler::compression::Format::No);
+        assert_eq!(compression, niffler::Format::No);
     }
 
     #[test]
@@ -246,7 +247,7 @@ mod tests {
         let file_path = PathBuf::from("test");
         let compression = infer_compression(&file_path);
 
-        assert_eq!(compression, niffler::compression::Format::No);
+        assert_eq!(compression, niffler::Format::No);
     }
 
     #[test]
@@ -254,7 +255,7 @@ mod tests {
         let file_path = PathBuf::from("test.GZ");
         let compression = infer_compression(&file_path);
 
-        assert_eq!(compression, niffler::compression::Format::Gzip);
+        assert_eq!(compression, niffler::Format::Gzip);
     }
 
     #[test]
@@ -397,7 +398,7 @@ mod tests {
             rx,
             &file_path,
             FastxFormat::Fastq,
-            Some(niffler::compression::Format::No),
+            Some(niffler::Format::No),
             niffler::Level::One,
         )
         .unwrap();
@@ -424,7 +425,7 @@ mod tests {
             rx,
             &file_path,
             FastxFormat::Fastq,
-            Some(niffler::compression::Format::Gzip),
+            Some(niffler::Format::Gzip),
             niffler::Level::One,
         )
         .unwrap();
@@ -457,7 +458,7 @@ mod tests {
             rx,
             &file_path,
             FastxFormat::Fastq,
-            Some(niffler::compression::Format::Bzip),
+            Some(niffler::Format::Bzip),
             niffler::Level::One,
         )
         .unwrap();
@@ -490,7 +491,7 @@ mod tests {
             rx,
             &file_path,
             FastxFormat::Fasta,
-            Some(niffler::compression::Format::No),
+            Some(niffler::Format::No),
             niffler::Level::One,
         )
         .unwrap();
@@ -511,7 +512,7 @@ mod tests {
             rx,
             &file_path,
             FastxFormat::Fastq,
-            Some(niffler::compression::Format::No),
+            Some(niffler::Format::No),
             niffler::Level::One,
         );
 
@@ -526,7 +527,7 @@ mod tests {
             rx,
             &file_path,
             FastxFormat::Fasta,
-            Some(niffler::compression::Format::No),
+            Some(niffler::Format::No),
             niffler::Level::One,
         );
 
@@ -549,7 +550,7 @@ mod tests {
             rx,
             &file_path,
             FastxFormat::Fastq,
-            Some(niffler::compression::Format::No),
+            Some(niffler::Format::No),
             niffler::Level::One,
         )
         .unwrap();
@@ -575,7 +576,7 @@ mod tests {
             rx,
             &file_path,
             FastxFormat::Fastq,
-            Some(niffler::compression::Format::No),
+            Some(niffler::Format::No),
             niffler::Level::One,
         )
         .unwrap();

@@ -18,6 +18,14 @@ pub struct CollectedTaxonIds {
     pub missing: Vec<i32>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct KractorResult {
+    pub reads_parsed: usize,
+    pub reads_output: usize,
+    pub input_format: FastxFormat,
+    pub output_format: FastxFormat,
+}
+
 pub fn process_single_end(
     reads_to_save: &FxHashSet<Vec<u8>>,
     input: &[PathBuf],
@@ -25,7 +33,7 @@ pub fn process_single_end(
     compression_type: Option<niffler::Format>,
     compression_level: niffler::Level,
     requested_output_format: OutputFormat,
-) -> Result<(usize, usize, FastxFormat, FastxFormat)> {
+) -> Result<KractorResult> {
     let input_format = detect_fastx_format(&input[0])
         .wrap_err_with(|| format!("Failed to detect input format: {}", input[0].display()))?;
     let output_format = resolve_output_format(input_format, requested_output_format);
@@ -63,12 +71,12 @@ pub fn process_single_end(
         })
         .map_err(|_| eyre!("Thread communication error"))??;
 
-    Ok((
-        total_reads_parsed,
-        total_reads_output,
+    Ok(KractorResult {
+        reads_parsed: total_reads_parsed,
+        reads_output: total_reads_output,
         input_format,
         output_format,
-    ))
+    })
 }
 
 pub fn process_paired_end(
@@ -78,7 +86,7 @@ pub fn process_paired_end(
     compression_type: Option<niffler::Format>,
     compression_level: niffler::Level,
     requested_output_format: OutputFormat,
-) -> Result<((usize, usize), (usize, usize), FastxFormat, FastxFormat)> {
+) -> Result<(KractorResult, KractorResult)> {
     let input_format1 = detect_fastx_format(&input[0]).wrap_err_with(|| {
         format!(
             "Failed to detect first input format: {}",
@@ -172,7 +180,20 @@ pub fn process_paired_end(
         })
         .map_err(|_| eyre!("Thread communication error"))??;
 
-    Ok(((reads1, out1), (reads2, out2), input_format, output_format))
+    Ok((
+        KractorResult {
+            reads_parsed: reads1,
+            reads_output: out1,
+            input_format,
+            output_format,
+        },
+        KractorResult {
+            reads_parsed: reads2,
+            reads_output: out2,
+            input_format,
+            output_format,
+        },
+    ))
 }
 
 pub fn collect_taxa_to_save(
@@ -257,7 +278,6 @@ pub fn collect_taxa_to_save(
 }
 
 #[cfg(test)]
-
 mod tests {
     use super::*;
     use std::fs::File;
@@ -276,11 +296,16 @@ mod tests {
         reads_to_save.insert(b"read1".to_vec());
         let input = vec![input_path];
         let output = vec![output_path.clone()];
-        let (reads_parsed, reads_output, input_format, output_format) = process_single_end(
+        let KractorResult {
+            reads_parsed,
+            reads_output,
+            input_format,
+            output_format,
+        } = process_single_end(
             &reads_to_save,
             &input,
             &output,
-            Some(niffler::compression::Format::No),
+            Some(niffler::Format::No),
             niffler::Level::One,
             OutputFormat::Auto,
         )
@@ -308,11 +333,16 @@ mod tests {
         reads_to_save.insert(b"read1".to_vec());
         let input = vec![input_path];
         let output = vec![output_path.clone()];
-        let (reads_parsed, reads_output, input_format, output_format) = process_single_end(
+        let KractorResult {
+            reads_parsed,
+            reads_output,
+            input_format,
+            output_format,
+        } = process_single_end(
             &reads_to_save,
             &input,
             &output,
-            Some(niffler::compression::Format::No),
+            Some(niffler::Format::No),
             niffler::Level::One,
             OutputFormat::Fasta,
         )
@@ -340,11 +370,16 @@ mod tests {
         reads_to_save.insert(b"read1".to_vec());
         let input = vec![input_path];
         let output = vec![output_path.clone()];
-        let (reads_parsed, reads_output, input_format, output_format) = process_single_end(
+        let KractorResult {
+            reads_parsed,
+            reads_output,
+            input_format,
+            output_format,
+        } = process_single_end(
             &reads_to_save,
             &input,
             &output,
-            Some(niffler::compression::Format::No),
+            Some(niffler::Format::No),
             niffler::Level::One,
             OutputFormat::Auto,
         )
@@ -373,11 +408,16 @@ mod tests {
         reads_to_save.insert(b"read1".to_vec());
         let input = vec![input_path];
         let output = vec![output_path.clone()];
-        let (reads_parsed, reads_output, input_format, output_format) = process_single_end(
+        let KractorResult {
+            reads_parsed,
+            reads_output,
+            input_format,
+            output_format,
+        } = process_single_end(
             &reads_to_save,
             &input,
             &output,
-            Some(niffler::compression::Format::No),
+            Some(niffler::Format::No),
             niffler::Level::One,
             OutputFormat::Fastq,
         )
@@ -431,15 +471,22 @@ mod tests {
         let input = vec![input_path1, input_path2];
         let output = vec![output_path1.clone(), output_path2.clone()];
         let (
-            (reads_parsed1, reads_output1),
-            (reads_parsed2, reads_output2),
-            input_format,
-            output_format,
+            KractorResult {
+                reads_parsed: reads_parsed1,
+                reads_output: reads_output1,
+                input_format,
+                output_format,
+            },
+            KractorResult {
+                reads_parsed: reads_parsed2,
+                reads_output: reads_output2,
+                ..
+            },
         ) = process_paired_end(
             &reads_to_save,
             &input,
             &output,
-            Some(niffler::compression::Format::No),
+            Some(niffler::Format::No),
             niffler::Level::One,
             OutputFormat::Auto,
         )
@@ -478,15 +525,22 @@ mod tests {
         let input = vec![input_path1, input_path2];
         let output = vec![output_path1.clone(), output_path2.clone()];
         let (
-            (reads_parsed1, reads_output1),
-            (reads_parsed2, reads_output2),
-            input_format,
-            output_format,
+            KractorResult {
+                reads_parsed: reads_parsed1,
+                reads_output: reads_output1,
+                input_format,
+                output_format,
+            },
+            KractorResult {
+                reads_parsed: reads_parsed2,
+                reads_output: reads_output2,
+                ..
+            },
         ) = process_paired_end(
             &reads_to_save,
             &input,
             &output,
-            Some(niffler::compression::Format::No),
+            Some(niffler::Format::No),
             niffler::Level::One,
             OutputFormat::Fasta,
         )
@@ -529,7 +583,7 @@ mod tests {
             &reads_to_save,
             &input,
             &output,
-            Some(niffler::compression::Format::No),
+            Some(niffler::Format::No),
             niffler::Level::One,
             OutputFormat::Auto,
         );

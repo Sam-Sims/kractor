@@ -38,7 +38,7 @@ pub struct Cli {
     pub children: bool,
     /// Compression format for output files (gz, bz2). Overrides the inferred format.
     #[arg(long = "compression-format", value_parser(validate_compression))]
-    pub output_type: Option<niffler::compression::Format>,
+    pub output_type: Option<niffler::Format>,
     /// Compression level (1-9).
     #[arg(
         long = "compression-level",
@@ -63,11 +63,11 @@ pub struct Cli {
     pub verbose: bool,
 }
 
-fn validate_compression(s: &str) -> Result<niffler::compression::Format, String> {
+fn validate_compression(s: &str) -> Result<niffler::Format, String> {
     match s {
-        "gz" => Ok(niffler::compression::Format::Gzip),
-        "bz2" => Ok(niffler::compression::Format::Bzip),
-        "none" => Ok(niffler::compression::Format::No),
+        "gz" => Ok(niffler::Format::Gzip),
+        "bz2" => Ok(niffler::Format::Bzip),
+        "none" => Ok(niffler::Format::No),
         _ => Err(format!("Unknown compression type: {s}")),
     }
 }

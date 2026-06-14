@@ -1,4 +1,4 @@
-use crate::extract::{process_paired_end, process_single_end};
+use crate::extract::{KractorResult, process_paired_end, process_single_end};
 use crate::parsers::kraken::ProcessedKrakenOutput;
 use crate::{Cli, extract, parsers};
 use color_eyre::Result;
@@ -108,13 +108,8 @@ impl Kractor {
         let input_layout = if paired { "paired" } else { "single" };
         let reads_extracted_per_taxon = self.get_reads_extracted_per_taxon();
 
-        if paired {
-            let (
-                (reads_parsed1, reads_output1),
-                (reads_parsed2, reads_output2),
-                input_sequence_format,
-                output_sequence_format,
-            ) = process_paired_end(
+        let result = if paired {
+            let (r1, r2) = process_paired_end(
                 &self.reads_to_save,
                 &self.args.input,
                 &self.args.output,
@@ -123,51 +118,36 @@ impl Kractor {
                 self.args.output_format,
             )?;
 
-            let reads_in = reads_parsed1 + reads_parsed2;
-
-            let reads_out = reads_output1 + reads_output2;
-
-            self.summary = Some(Summary {
-                kractor_version: env!("CARGO_PKG_VERSION").to_string(),
-                input_layout: input_layout.to_string(),
-                input_sequence_format: input_sequence_format.to_string(),
-                output_sequence_format: output_sequence_format.to_string(),
-                requested_taxon_ids: self.args.taxid.clone(),
-                matched_taxon_ids: self.taxon_ids.clone(),
-                requested_taxon_ids_not_found: self.missing_taxon_ids.clone(),
-                total_input_records: reads_in,
-                total_output_records: reads_out,
-                extraction_fraction: reads_out as f64 / reads_in as f64,
-                assigned_reads_per_taxon: reads_extracted_per_taxon.clone(),
-            });
+            KractorResult {
+                reads_parsed: r1.reads_parsed + r2.reads_parsed,
+                reads_output: r1.reads_output + r2.reads_output,
+                input_format: r1.input_format,
+                output_format: r1.output_format,
+            }
         } else {
-            let (reads_parsed1, reads_output1, input_sequence_format, output_sequence_format) =
-                process_single_end(
-                    &self.reads_to_save,
-                    &self.args.input,
-                    &self.args.output,
-                    self.args.output_type,
-                    self.args.compression_level,
-                    self.args.output_format,
-                )?;
+            process_single_end(
+                &self.reads_to_save,
+                &self.args.input,
+                &self.args.output,
+                self.args.output_type,
+                self.args.compression_level,
+                self.args.output_format,
+            )?
+        };
 
-            let reads_in = reads_parsed1;
-            let reads_out = reads_output1;
-
-            self.summary = Some(Summary {
-                kractor_version: env!("CARGO_PKG_VERSION").to_string(),
-                input_layout: input_layout.to_string(),
-                input_sequence_format: input_sequence_format.to_string(),
-                output_sequence_format: output_sequence_format.to_string(),
-                requested_taxon_ids: self.args.taxid.clone(),
-                matched_taxon_ids: self.taxon_ids.clone(),
-                requested_taxon_ids_not_found: self.missing_taxon_ids.clone(),
-                total_input_records: reads_in,
-                total_output_records: reads_out,
-                extraction_fraction: reads_out as f64 / reads_in as f64,
-                assigned_reads_per_taxon: reads_extracted_per_taxon,
-            });
-        }
+        self.summary = Some(Summary {
+            kractor_version: env!("CARGO_PKG_VERSION").to_string(),
+            input_layout: input_layout.to_string(),
+            input_sequence_format: result.input_format.to_string(),
+            output_sequence_format: result.output_format.to_string(),
+            requested_taxon_ids: self.args.taxid.clone(),
+            matched_taxon_ids: self.taxon_ids.clone(),
+            requested_taxon_ids_not_found: self.missing_taxon_ids.clone(),
+            total_input_records: result.reads_parsed,
+            total_output_records: result.reads_output,
+            extraction_fraction: result.reads_output as f64 / result.reads_parsed as f64,
+            assigned_reads_per_taxon: reads_extracted_per_taxon,
+        });
 
         Ok(())
     }
