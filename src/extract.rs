@@ -1,4 +1,8 @@
-use crate::parsers::fastx::{parse_fastq, write_output_fasta, write_output_fastq};
+use crate::cli::OutputFormat;
+use crate::parsers::fastx::{
+    detect_fastx_format, parse_fastx, resolve_output_format, write_output_fastx, FastxFormat,
+    FastxRecord,
+};
 use crate::parsers::kraken::{
     build_tree_from_kraken_report, extract_children, extract_parents, ProcessedKrakenTree,
 };
@@ -6,7 +10,6 @@ use color_eyre::{eyre::bail, eyre::eyre, eyre::WrapErr, Result};
 use crossbeam::{channel, thread};
 use fxhash::FxHashSet;
 use log::{debug, info, warn};
-use noodles::fastq;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
@@ -21,39 +24,51 @@ pub fn process_single_end(
     output: &[PathBuf],
     compression_type: Option<niffler::Format>,
     compression_level: niffler::Level,
-    fasta: bool,
-) -> Result<(usize, usize)> {
-    thread::scope(|scope| -> Result<(usize, usize)> {
-        let (tx, rx) = channel::unbounded::<fastq::Record>();
+    requested_output_format: OutputFormat,
+) -> Result<(usize, usize, FastxFormat, FastxFormat)> {
+    let input_format = detect_fastx_format(&input[0])
+        .wrap_err_with(|| format!("Failed to detect input format: {}", input[0].display()))?;
+    let output_format = resolve_output_format(input_format, requested_output_format);
 
-        let reader = scope.spawn(|_| {
-            let result = parse_fastq(&input[0], reads_to_save, &tx);
-            drop(tx);
-            result.wrap_err_with(|| format!("Failed to parse input file: {}", input[0].display()))
-        });
+    let (total_reads_parsed, total_reads_output) =
+        thread::scope(|scope| -> Result<(usize, usize)> {
+            let (tx, rx) = channel::unbounded::<FastxRecord>();
 
-        let writer = scope.spawn(|_| {
-            if fasta {
-                write_output_fasta(rx, &output[0]).wrap_err_with(|| {
-                    format!("Failed to write output file: {}", output[0].display())
-                })
-            } else {
-                write_output_fastq(rx, &output[0], compression_type, compression_level)
-                    .wrap_err_with(|| {
-                        format!("Failed to write output file: {}", output[0].display())
-                    })
-            }
-        });
+            let reader = scope.spawn(|_| {
+                let result = parse_fastx(&input[0], reads_to_save, &tx).map(|(count, _)| count);
+                drop(tx);
+                result
+                    .wrap_err_with(|| format!("Failed to parse input file: {}", input[0].display()))
+            });
 
-        let total_reads_parsed = reader
-            .join()
-            .map_err(|_| eyre!("Reader thread panicked"))??;
-        let total_reads_output = writer
-            .join()
-            .map_err(|_| eyre!("Writer thread panicked"))??;
-        Ok((total_reads_parsed, total_reads_output))
-    })
-    .map_err(|_| eyre!("Thread communication error"))?
+            let writer = scope.spawn(|_| {
+                write_output_fastx(
+                    rx,
+                    &output[0],
+                    output_format,
+                    compression_type,
+                    compression_level,
+                )
+                .wrap_err_with(|| format!("Failed to write output file: {}", output[0].display()))
+            });
+
+            let total_reads_parsed = reader
+                .join()
+                .map_err(|_| eyre!("Reader thread for single-end input panicked"))??;
+            let total_reads_output = writer
+                .join()
+                .map_err(|_| eyre!("Writer thread for single-end output panicked"))??;
+
+            Ok((total_reads_parsed, total_reads_output))
+        })
+        .map_err(|_| eyre!("Thread communication error"))??;
+
+    Ok((
+        total_reads_parsed,
+        total_reads_output,
+        input_format,
+        output_format,
+    ))
 }
 
 pub fn process_paired_end(
